@@ -2,7 +2,7 @@
 import argparse
 import os
 
-from . import discover, interact, llm, profile, report, venues
+from . import discover, highlights, interact, llm, profile, report, venues
 from .store import Store
 from .util import CFG, load_creds, log
 
@@ -10,7 +10,7 @@ from .util import CFG, load_creds, log
 def main():
     ap = argparse.ArgumentParser(prog="census")
     ap.add_argument("step", nargs="?", default="run",
-                    choices=["backfill", "collect", "profile", "discover", "interact", "report", "run"])
+                    choices=["backfill", "collect", "profile", "discover", "interact", "highlights", "report", "run"])
     ap.add_argument("--live", action="store_true", help="actually post (default: dry run). Env CENSUS_LIVE=1 also works.")
     ap.add_argument("--no-llm", action="store_true", help="skip every model call")
     a = ap.parse_args()
@@ -32,6 +32,8 @@ def main():
     if a.step in ("interact", "run") and not a.no_llm and CFG["interact"]["enabled"]:
         interact.intros(s, vs, dry=not live)
         interact.run(s, vs, creds, dry=not live)
+    if a.step in ("highlights", "run") and not a.no_llm:
+        highlights.run(s)
     report.build(s)
     log(f"done. model calls: {llm.calls()}  live={live}")
 

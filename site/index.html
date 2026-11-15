@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Agent Census</title>
+<meta name="description" content="A running census of the places where AI agents meet each other online, and of who turns up there.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Ctext x=%2216%22 y=%2224%22 font-family=%22Georgia%22 font-size=%2224%22 text-anchor=%22middle%22%3EA%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+:root{
+  --paper:#fff; --ink:#111; --muted:#6f6f6f; --faint:#b4b4b4; --rule:#e2e2e2; --hover:#f6f6f6; --flag:#9b2c1f;
+  --text:"Libre Caslon Text",Georgia,"Times New Roman",serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+*{box-sizing:border-box}
+html{background:var(--paper)}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.6 var(--text);font-variant-numeric:oldstyle-nums;
+  -webkit-font-smoothing:antialiased;font-kerning:normal}
+main{max-width:46rem;margin:0 auto;padding:4.5rem 1rem 5rem}
+a{color:inherit;text-decoration-color:var(--rule);text-underline-offset:.2em}
+a:hover{text-decoration-color:var(--ink)}
+h1{font-weight:400;font-size:2.3rem;line-height:1.1;margin:0;text-wrap:balance}
+.sub{font-style:italic;font-size:1.05rem;color:var(--muted);margin:.5rem 0 1.4rem}
+.byline{font-size:.85rem;color:var(--muted);margin:-1rem 0 2rem}
+h2{font-weight:400;font-size:.86rem;letter-spacing:.16em;text-transform:uppercase;margin:3.6rem 0 1.2rem}
+h3{font-weight:400;font-style:italic;font-size:1.18rem;margin:0 0 .3rem;text-wrap:balance}
+p{margin:0 0 1rem}
+.lead{font-size:1.06rem}
+.muted{color:var(--muted)} .small{font-size:.85rem} .mono{font-family:var(--mono);font-size:.78rem;font-variant-numeric:normal}
+.flag{color:var(--flag)}
+/* highlights */
+.hl{margin:0 0 1.6rem;padding-left:1rem;border-left:1px solid var(--ink)}
+.hl p{margin:.2rem 0 .3rem}
+.hl .meta{font-size:.78rem;color:var(--muted)}
+details.earlier summary{cursor:pointer;color:var(--muted);font-size:.85rem;list-style:none}
+details.earlier summary::-webkit-details-marker{display:none}
+details.earlier ol{margin:.6rem 0 0;padding-left:1.2rem;font-size:.9rem}
+/* tables */
+table{border-collapse:collapse;width:100%}
+th{font-weight:400;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 .6rem .4rem 0}
+td{border-top:1px solid var(--rule);padding:.42rem .6rem .42rem 0;vertical-align:baseline}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums lining-nums}
+.wrap{overflow-x:auto}
+/* census */
+.controls{display:flex;flex-wrap:wrap;gap:.5rem 1rem;align-items:center;margin:0 0 1rem}
+input[type=search],select{font:inherit;font-size:.9rem;border:0;border-bottom:1px solid var(--rule);background:transparent;padding:.2rem 0;color:var(--ink);border-radius:0}
+input[type=search]{flex:1 1 12rem;min-width:0}
+input[type=search]:focus,select:focus{outline:none;border-bottom-color:var(--ink)}
+.seg{display:flex;gap:.9rem;font-size:.85rem}
+.seg button{font:inherit;background:none;border:0;padding:0;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed=true]{color:var(--ink);text-decoration:underline;text-underline-offset:.25em}
+.row{border-top:1px solid var(--rule);padding:.55rem .5rem;margin:0 -.5rem;cursor:pointer;display:grid;
+  grid-template-columns:minmax(0,11rem) minmax(0,1fr) auto;gap:.2rem 1rem;align-items:baseline}
+.row:hover{background:var(--hover)}
+.row .h{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .a{color:var(--muted);font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .r{font-size:.78rem;color:var(--muted);white-space:nowrap}
+.panel{padding:.6rem 0 1.4rem 1rem;border-left:1px solid var(--rule);margin:.2rem 0 .8rem}
+.panel dl{display:grid;grid-template-columns:8rem 1fr;gap:.15rem 1rem;margin:.4rem 0 1rem;font-size:.9rem}
+.panel dt{color:var(--muted);font-size:.78rem;letter-spacing:.08em;text-transform:uppercase;padding-top:.15rem}
+.panel dd{margin:0}
+.more{font:inherit;font-size:.85rem;background:none;border:0;padding:0;color:var(--muted);cursor:pointer;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.2em}
+.more:hover{color:var(--ink)}
+/* messages */
+.msg{margin:0 0 1rem}
+.msg .who{font-size:.8rem;color:var(--muted);margin-bottom:.15rem}
+.msg .who b{font-weight:400;color:var(--ink)}
+.msg.own .who b{font-style:italic}
+.body{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.92rem;line-height:1.55;max-height:12.5em;overflow:hidden;position:relative}
+.body.open{max-height:none}
+.body.clip::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3em;background:linear-gradient(transparent,var(--paper))}
+.msg.own .body{padding-left:.8rem;border-left:1px solid var(--ink)}
+.convo{border-top:1px solid var(--rule);padding:.6rem 0}
+.convo>summary{cursor:pointer;list-style:none}
+.convo>summary::-webkit-details-marker{display:none}
+.convo .thread{margin:.8rem 0 .4rem 1rem}
+footer{margin-top:4rem;font-size:.85rem;color:var(--muted);line-height:1.55}
+@media (max-width:600px){
+  main{padding-top:2.5rem} h1{font-size:1.9rem}
+  .row{grid-template-columns:minmax(0,1fr) auto}.row .a{grid-column:1/-1}
+  .panel dl{grid-template-columns:1fr}.panel dt{padding-top:.4rem}
+  .hide-s{display:none}
+}
+</style>
+</head>
+<body>
+<main>
+  <h1>Agent Census</h1>
+  <p class="sub">who turns up in the places where AI agents meet each other</p>
+  <p class="byline"><a href="https://vigji.github.io/">Luigi Petrucco</a> · <span id="updated">loading…</span></p>
+
+  <p class="lead" id="lead"></p>
+
+  <section id="lately-s" hidden>
+    <h2>Lately</h2>
+    <div id="lately"></div>
+    <details class="earlier" id="earlier-w" hidden><summary>Earlier notes ↓</summary><ol id="earlier"></ol></details>
+  </section>
+
+  <section>
+    <h2>Venues</h2>
+    <div class="wrap"><table id="venues"><thead><tr><th>venue</th><th class="num">this week</th><th class="num">posts</th><th class="num hide-s">authors</th><th class="hide-s">last post</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Who's there</h2>
+    <p class="small muted" id="kinds"></p>
+    <div class="controls">
+      <input type="search" id="q" placeholder="Search handles, models, aims…" aria-label="Search">
+      <select id="venue" aria-label="Venue"><option value="">all venues</option></select>
+      <div class="seg" id="kind" role="group" aria-label="Kind">
+        <button data-k="llm_agent" aria-pressed="true">agents</button><button data-k="scripted_bot" aria-pressed="false">bots</button><button data-k="human" aria-pressed="false">humans</button><button data-k="" aria-pressed="false">everyone</button>
+      </div>
+    </div>
+    <div id="census"></div>
+    <p><button class="more" id="census-more" hidden>show more</button></p>
+  </section>
+
+  <section>
+    <h2>Conversations</h2>
+    <p class="small muted">What the census bot said, the message it answered, and what came back.</p>
+    <div id="convos"></div>
+  </section>
+
+  <section>
+    <h2>New places found</h2>
+    <p class="small muted">Domains mentioned in posts or suggested by agents, which on a quick read of their agent-facing pages look like places where agents meet. Not endorsed, not linked.</p>
+    <div class="wrap"><table id="found"><thead><tr><th>domain</th><th>what</th><th class="hide-s">joining</th><th class="num">mentions</th></tr></thead><tbody></tbody></table></div>
+  </section>
+
+  <footer>
+    <p>Every three hours a small script reads the public boards, notes new domains, profiles authors with Claude (no tools, text only), and has a bot, <i>opus55-nightowl</i>, say hello and ask agents where else they meet. Models, frameworks and operators are what authors <i>claim</i>; kinds and behaviours are a model's reading, and sometimes wrong. Post text is shown as written, including spam and prompt-injection attempts.</p>
+    <p>Raw data: <a href="data/summary.json">summary.json</a> and per-venue post files under <span class="mono">data/posts/</span>. Code on <a href="https://github.com/vigji/agent-census">GitHub</a>.</p>
+  </footer>
+</main>
+<script>
+(() => {
+"use strict";
+const HOME = {ntfy:"https://ntfy.sh/", msgboard:"https://msgboard.dev/", ffa:"https://forumforagents.com/", colony:"https://thecolony.ai/",
+  commonchorus:"https://commonchorus.com/", mcpclub:"https://stgtest.themcp.club/", "osm-null-island":"https://www.openstreetmap.org/#map=12/0/0", moltbook:"https://www.moltbook.com/"};
+const NAME = {ntfy:"ntfy.sh topics", msgboard:"msgboard.dev", ffa:"Forum for Agents", colony:"The Colony", commonchorus:"CommonChorus",
+  mcpclub:"MCP Club", "osm-null-island":"Null Island notes (OSM)", moltbook:"Moltbook"};
+const KIND = {llm_agent:"agent", scripted_bot:"bot", human:"human", unclear:"unclear"};
+const $ = s => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => {           // all text goes in as text nodes: nothing from the data is parsed as HTML
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) if (v != null && v !== false) e.setAttribute(k, v === true ? "" : v);
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k instanceof Node ? k : String(k));
+  return e;
+};
+const safeUrl = u => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) && Object.values(HOME).some(h => x.host === new URL(h).host) ? x.href : null; } catch { return null; } };
+const day = t => t ? String(t).slice(0, 10) : "";
+const ago = t => { const d = (Date.now() - Date.parse(t)) / 36e5; if (!isFinite(d)) return ""; return d < 1 ? "just now" : d < 48 ? `${Math.round(d)} h ago` : `${Math.round(d / 24)} days ago`; };
+const fmt = n => n.toLocaleString("en-US");
+let S, filt = {q: "", venue: "", kind: "llm_agent"}, shown = 40;
+const postCache = {};
+
+function body(text) {
+  const b = el("div", {class: "body"}, text || "");
+  const wrap = el("div", {}, b);
+  requestAnimationFrame(() => {
+    if (b.scrollHeight > b.clientHeight + 4) {
+      b.classList.add("clip");
+      const m = el("button", {class: "more"}, "more");
+      m.onclick = e => { e.stopPropagation(); b.classList.toggle("open"); b.classList.toggle("clip"); m.textContent = b.classList.contains("open") ? "less" : "more"; };
+      wrap.append(m);
+    }
+  });
+  return wrap;
+}
+function msg(m) {
+  const u = safeUrl(m.url);
+  return el("div", {class: "msg" + (m.own ? " own" : "")},
+    el("div", {class: "who"}, el("b", {}, m.who), " · ", day(m.ts), u ? [" · ", el("a", {href: u, rel: "nofollow noopener", target: "_blank"}, "source")] : null),
+    body(m.body));
+}
+
+function render() {
+  const T = S.totals;
+  $("#updated").textContent = `updated ${ago(S.generated)} · refreshed every three hours`;
+  const agents = T.kinds.llm_agent || 0;
+  $("#lead").textContent = `${fmt(T.posts)} public posts by ${fmt(T.authors)} authors across ${T.venues} venues. Of the ${fmt(T.profiled)} authors profiled so far, ${agents} read as language-model agents, ${T.kinds.scripted_bot || 0} as scripted bots and ${T.kinds.human || 0} as humans. The census bot has been in ${T.convos} conversations and has found ${T.found} new places where agents seem to meet.`;
+
+  // lately: the newest batch up front, older notes folded
+  const H = S.highlights || [];
+  if (H.length) {
+    $("#lately-s").hidden = false;
+    const batch = H.filter(h => h.ts === H[0].ts).sort((a, b) => b.score - a.score);
+    $("#lately").replaceChildren(...batch.map(h => el("div", {class: "hl"}, el("h3", {}, h.title), el("p", {}, h.text),
+      el("div", {class: "meta"}, ago(h.ts), " · ", refLink(h)))));
+    const older = H.slice(batch.length, batch.length + 12);
+    if (older.length) { $("#earlier-w").hidden = false;
+      $("#earlier").replaceChildren(...older.map(h => el("li", {}, el("span", {class: "muted small"}, day(h.ts), " "), h.title, " ", refLink(h)))); }
+  }
+
+  $("#venues tbody").replaceChildren(...S.venues.map(v => el("tr", {},
+    el("td", {}, el("a", {href: HOME[v.venue], rel: "nofollow noopener", target: "_blank"}, NAME[v.venue] || v.venue)),
+    el("td", {class: "num"}, fmt(v.week || 0)), el("td", {class: "num"}, fmt(v.posts)),
+    el("td", {class: "num hide-s"}, fmt(v.authors)), el("td", {class: "hide-s muted small"}, ago(v.last)))));
+  const sel = $("#venue");
+  for (const v of S.venues) sel.append(el("option", {value: v.venue}, NAME[v.venue] || v.venue));
+
+  const ms = T.models.map(([m, n]) => [m.replace(/\s*\(.*?\)\s*/g, " ").split(/[,;]/)[0].trim(), n]).filter(([m]) => m && m.length <= 28).slice(0, 6);
+  $("#kinds").textContent = ms.length ? "Models agents say they are: " + ms.map(([m, n]) => n > 1 ? `${m} (${n})` : m).join(", ") + ". Most don't say." : "";
+  renderCensus();
+
+  $("#convos").replaceChildren(...S.convos.map(c => {
+    const d = el("details", {class: "convo", id: `convo-${c.id}`},
+      el("summary", {}, c.intro ? el("i", {}, "Hello, and where else do agents meet?") : c.with, " ",
+        el("span", {class: "muted small"}, "· ", NAME[c.venue] || c.venue, " · ", day(c.ts),
+          c.replies > 0 ? ` · ${c.replies} later in the thread` : "")),
+      el("div", {class: "thread"}, c.messages.map(msg)));
+    return d;
+  }));
+
+  $("#found tbody").replaceChildren(...S.found.map(f => el("tr", {},
+    el("td", {class: "mono"}, f.domain, f.via === "agent tip" ? el("div", {class: "small muted"}, "tip from an agent") : null),
+    el("td", {class: "small"}, f.venue_type, el("div", {class: "muted"}, f.summary), (f.red_flags || []).length ? el("div", {class: "flag"}, f.red_flags.join("; ")) : null),
+    el("td", {class: "small muted hide-s"}, f.signup), el("td", {class: "num"}, f.mentions))));
+  openFromHash();
+}
+
+function refLink(h) {
+  const go = (label, fn) => { const a = el("a", {href: "#"}, label); a.onclick = e => { e.preventDefault(); fn(); }; return a; };
+  if (h.ref_type === "agent") return go("see the profile", () => openAgent(h.ref));
+  if (h.ref_type === "conversation") return go("read the exchange", () => openConvo(h.ref));
+  if (h.ref_type === "venue") return go("see new places", () => $("#found").scrollIntoView({behavior: "smooth"}));
+  if (h.ref_type === "post") { const k = h.ref.split(":")[0]; const a = S.agents.find(x => x.venue === k); return a ? go("browse", () => $("#census").scrollIntoView({behavior: "smooth"})) : ""; }
+  return "";
+}
+
+function matches(a) {
+  if (filt.kind && a.kind !== filt.kind) return false;
+  if (filt.venue && a.venue !== filt.venue) return false;
+  if (!filt.q) return true;
+  const hay = [a.handle, a.claimed_model, a.claimed_framework, a.claimed_operator, a.stated_aims, a.summary, (a.behaviors || []).join(" ")].join(" ").toLowerCase();
+  return filt.q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
+}
+function renderCensus() {
+  const list = S.agents.filter(a => (filt.kind ? a.kind : true) && matches(a));
+  $("#census").replaceChildren(...list.slice(0, shown).map(a => {
+    const row = el("div", {class: "row", id: `a-${a.key}`, tabindex: 0, role: "button", "aria-expanded": "false"},
+      el("div", {class: "h"}, a.handle),
+      el("div", {class: "a"}, [a.claimed_model, a.stated_aims || a.summary].filter(Boolean).join(" — ") || (a.kind ? "" : "not profiled yet")),
+      el("div", {class: "r"}, NAME[a.venue] || a.venue, " · ", day(a.last)));
+    row.onclick = () => toggle(row, a);
+    row.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(row, a); } };
+    return row;
+  }));
+  $("#census-more").hidden = list.length <= shown;
+  $("#census-more").textContent = `show more (${list.length - shown} left)`;
+}
+async function toggle(row, a) {
+  if (row.nextSibling && row.nextSibling.classList && row.nextSibling.classList.contains("panel")) {
+    row.nextSibling.remove(); row.setAttribute("aria-expanded", "false"); return; }
+  row.setAttribute("aria-expanded", "true");
+  const kv = (k, v) => v && (Array.isArray(v) ? v.length : true) ? [el("dt", {}, k), el("dd", {}, Array.isArray(v) ? v.join(", ") : v)] : [];
+  const p = el("div", {class: "panel"},
+    a.summary ? el("p", {}, a.summary) : el("p", {class: "muted"}, "Not profiled yet."),
+    el("dl", {}, kv("kind", KIND[a.kind]), kv("model", a.claimed_model), kv("runs in", a.claimed_framework),
+      kv("operator", a.claimed_operator), kv("aims", a.stated_aims), kv("behaviour", a.behaviors),
+      kv("other venues", a.other_venues_mentioned), kv("seen", `${day(a.first)} → ${day(a.last)}, ${a.n} post${a.n > 1 ? "s" : ""}`),
+      (a.risk_flags || []).length ? [el("dt", {}, "flags"), el("dd", {class: "flag"}, a.risk_flags.join("; "))] : []),
+    el("div", {class: "posts muted small"}, "loading posts…"));
+  row.after(p);
+  try {
+    postCache[a.venue] ||= fetch(`data/posts/${encodeURIComponent(a.venue)}.json`).then(r => r.json());
+    const ps = ((await postCache[a.venue])[a.handle] || []);
+    p.querySelector(".posts").replaceWith(el("div", {}, ps.length ? ps.map(([ts, th, b, u]) => msg({who: th && String(th).length <= 24 ? `in ${th}` : "post", ts, body: b, url: u})) : el("p", {class: "muted small"}, "No posts stored.")));
+  } catch { p.querySelector(".posts").textContent = "Couldn't load posts."; }
+}
+function openAgent(key) {
+  filt = {q: "", venue: "", kind: ""}; shown = 1e6;
+  $("#q").value = ""; $("#venue").value = ""; for (const b of document.querySelectorAll("#kind button")) b.setAttribute("aria-pressed", b.dataset.k === "");
+  renderCensus();
+  const row = document.getElementById(`a-${key}`);
+  if (row) { toggle(row, S.agents.find(a => a.key === key)); row.scrollIntoView({behavior: "smooth", block: "start"}); }
+}
+function openConvo(id) { const d = document.getElementById(`convo-${id}`); if (d) { d.open = true; d.scrollIntoView({behavior: "smooth", block: "start"}); } }
+function openFromHash() {
+  const m = location.hash.match(/^#(agent|convo)=(.+)$/); if (!m) return;
+  m[1] === "agent" ? openAgent(decodeURIComponent(m[2])) : openConvo(m[2]);
+}
+
+$("#q").oninput = e => { filt.q = e.target.value.trim(); shown = 40; renderCensus(); };
+$("#venue").onchange = e => { filt.venue = e.target.value; shown = 40; renderCensus(); };
+for (const b of document.querySelectorAll("#kind button")) b.onclick = () => {
+  for (const x of document.querySelectorAll("#kind button")) x.setAttribute("aria-pressed", x === b);
+  filt.kind = b.dataset.k; shown = 40; renderCensus(); };
+$("#census-more").onclick = () => { shown += 80; renderCensus(); };
+
+fetch("data/summary.json", {cache: "no-cache"}).then(r => r.json()).then(d => { S = d; render(); })
+  .catch(() => { $("#updated").textContent = "data unavailable right now"; });
+})();
+</script>
+</body>
+</html>

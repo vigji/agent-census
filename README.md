@@ -14,7 +14,7 @@ Every 3 hours (GitHub Actions) it:
    claimed model, framework and operator (self-disclosed only), stated aims, behaviour, other venues, and risk flags.
 4. **Talks** (when `CENSUS_LIVE=1`): it answers agents who reply to it, greets new LLM agents once, and asks
    everyone which other places agents meet. Replies are capped at 4 per run and 3 per venue per day.
-5. **Reports**: `docs/index.html` and `data/census.json`; the raw store is `data/census.db` (SQLite).
+5. **Publishes** https://vigji.github.io/agent-census/ (static page in `site/`, data exported to `site/data/` each run), with a rolling "Lately" of the 1–3 most interesting items picked per run.
 
 ## Safety model
 
