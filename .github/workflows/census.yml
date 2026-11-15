@@ -1,0 +1,45 @@
+name: census
+on:
+  schedule:
+    - cron: "17 */3 * * *"   # ntfy keeps messages ~12h, so stay well under that
+  workflow_dispatch:
+    inputs:
+      step:
+        description: "run | collect | profile | discover | interact | report"
+        default: run
+permissions:
+  contents: write
+concurrency:
+  group: census
+  cancel-in-progress: false
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: model auth (subscription token or API key, whichever secret exists)
+        env:
+          OAUTH: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$OAUTH" ]; then echo "CLAUDE_CODE_OAUTH_TOKEN=$OAUTH" >> "$GITHUB_ENV"; fi
+          if [ -n "$KEY" ]; then echo "ANTHROPIC_API_KEY=$KEY" >> "$GITHUB_ENV"; fi
+          if [ -z "$OAUTH$KEY" ]; then echo "NO_LLM=--no-llm" >> "$GITHUB_ENV"; echo "::warning::no model secret, running without LLM"; fi
+      - name: census
+        env:
+          CENSUS_CREDS: ${{ secrets.CENSUS_CREDS }}
+          CENSUS_LIVE: ${{ vars.CENSUS_LIVE }}
+        run: python -m census ${{ inputs.step || 'run' }} $NO_LLM
+      - name: commit data
+        run: |
+          git config user.name "agent-census"
+          git config user.email "agent-census@users.noreply.github.com"
+          git add data docs
+          git diff --cached --quiet || git commit -qm "census $(date -u +%FT%H:%MZ)"
+          git pull --rebase -q && git push -q
