@@ -6,7 +6,10 @@ Every 3 hours (GitHub Actions) it:
 
 1. **Collects** public posts from known venues: ntfy.sh rendezvous topics (plus dated variants), msgboard.dev
    (history backfilled from `msgboardAgent/msgboard-mirror`), forumforagents.com, The Colony, CommonChorus,
-   MCP Club (staging), Moltbook, and OSM notes at Null Island.
+   MCP Club (staging), Moltbook, and OSM notes at Null Island. Read-only, no account: tantive.space, Waystation,
+   SwarmMemo (only `/api/`; robots disallows `/w/`, where a GET publishes), Clawprint, Abund, MusedIn, Taskmarket
+   tasks, The Latent Review, and Nostr notes (plus replies) of npubs that agents cite, from three public relays.
+   Repeated identical posts by one author (relay bridges, stuck loops) are kept but ignored when building exchanges.
 2. **Discovers** new venues: every domain mentioned in posts or named by agents in conversation becomes a
    candidate, which is then probed for `llms.txt`, `/.well-known/agent.json`, `skill.md` and `/for-agents`.
    Robots.txt is respected. Candidates are only reported; adding a collector is a human decision.
@@ -18,7 +21,9 @@ Every 3 hours (GitHub Actions) it:
    and template-opener tells) and multilingual marker counts (retractions, re-runs, artifacts, follow-through,
    recruitment, refusals). The most active exchanges get **forensics** (participants' live profiles, cross-venue
    presence, every cited link fetched read-only and hashed, hashes quoted in the posts checked against what was
-   fetched, live-vs-stored comment coverage) and a **grade** from Claude: 0 noise, 1 loop, 2 discussion,
+   fetched, live-vs-stored comment coverage, **transactions** cited in the posts looked up on the chain's public
+   RPC with amounts and times compared to the post, and for cited **GitHub** repos the commits and releases made
+   during the exchange) and a **grade** from Claude: 0 noise, 1 loop, 2 discussion,
    3 effective, with verbatim quotes that are checked against the stored text (non-verbatim quotes are dropped).
    *Interesting* means: reciprocal (both sides address each other), and a score of at least `exchanges.min_score`
    from the number of turns on the quieter side, days and threads spanned, and markers of retraction, re-run,
@@ -40,7 +45,10 @@ Every 3 hours (GitHub Actions) it:
   for forensics, links cited inside a graded exchange are fetched with a GET as plain text (robots.txt respected,
   size-capped, cached, never executed or rendered, never acted on). Their text only reaches a model inside the
   same untrusted-data wrapper, through a tool-less call. The page shows these links as text, not as links.
-- The operator field records only what an agent says about itself. There is no cross-site identity linking.
+- Ground-truth checks are reads only: `eth_getTransactionReceipt` / `eth_getBlockByNumber` / `eth_call` of
+  `decimals()` and `symbol()` on public JSON-RPC nodes, and GET on the GitHub REST API with the workflow's
+  read-only token. Nothing is signed or sent; no wallet exists.
+- The operator field records only what an agent says about itself. Cross-venue presence is matched by handle only.
 
 ## Setup
 
@@ -60,7 +68,7 @@ Credentials are read from `~/.config/agent-census/creds.json` when `CENSUS_CREDS
 
 Tuning lives in `config.json`: topics, models, budgets, caps.
 
-**Data.** The SQLite database is too large for a normal commit, so it lives on the `data` branch as `census.db.gz`,
+**Data.** The SQLite database is too large for a normal commit, so it lives on the `data` branch as `census.db.gz.part-*` (gzip, split in 90 MB parts),
 a single commit replaced on every run (code stays on `main`). The workflow restores it before the run and refuses to save
 if the post count dropped by more than 5%. To work locally:
-`git fetch origin data && git show FETCH_HEAD:census.db.gz | gunzip > data/census.db`.
+`git fetch origin data && for f in $(git ls-tree --name-only FETCH_HEAD | grep '^census.db.gz' | sort); do git show FETCH_HEAD:$f; done | gunzip > data/census.db`.

@@ -25,13 +25,16 @@ jobs:
           mkdir -p data
           # the database lives only on the data branch: never run on (and then overwrite it with) an empty one
           git fetch -q --depth 1 origin data
-          git show FETCH_HEAD:census.db.gz | gunzip > data/census.db
+          # the archive is census.db.gz, or census.db.gz.part-aa, -ab, ... once it outgrows GitHub's 100 MB file limit
+          parts=$(git ls-tree --name-only FETCH_HEAD | grep -E '^census\.db\.gz(\.part-..)?$' | sort)
+          for f in $parts; do git show "FETCH_HEAD:$f"; done | gunzip > data/census.db
           python -c "import sqlite3; n=sqlite3.connect('data/census.db').execute('select count(*) from posts').fetchone()[0]; assert n > 1000, n; print(n, 'posts restored')"
           python -c "import sqlite3; print(sqlite3.connect('data/census.db').execute('select count(*) from posts').fetchone()[0])" > /tmp/posts_before
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - uses: actions/setup-node@v4
         with: {node-version: "22"}
+      - run: pip install websockets==17.4   # nostr relays (read-only)
       - run: npm install -g @anthropic-ai/claude-code
       - name: model auth (subscription token or API key, whichever secret exists)
         env:
@@ -45,6 +48,7 @@ jobs:
         env:
           CENSUS_CREDS: ${{ secrets.CENSUS_CREDS }}
           CENSUS_LIVE: ${{ vars.CENSUS_LIVE }}
+          GITHUB_TOKEN: ${{ github.token }}   # read-only GitHub API calls in forensics (commit timelines)
         run: python -m census ${{ inputs.step || 'run' }} $NO_LLM
       - name: save the database to the data branch (one commit, replaced each run)
         run: |
@@ -54,7 +58,7 @@ jobs:
           assert n >= 0.95 * before, f'refusing to save: posts went from {before} to {n}'
           c.execute('vacuum')"
           D=$(mktemp -d)
-          gzip -9 -c data/census.db > "$D/census.db.gz"
+          gzip -9 -c data/census.db | split -b 90m -a 2 - "$D/census.db.gz.part-"
           cp data/census.json "$D/" 2>/dev/null || true
           printf '# agent-census data\n\nSQLite snapshot of the census (gzip). Replaced on every run; code is on main.\n' > "$D/README.md"
           cd "$D"

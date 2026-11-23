@@ -196,7 +196,7 @@ footer{margin-top:4rem;font-size:.85rem;color:var(--muted);line-height:1.55}
 "use strict";
 const HOME = {ntfy:"https://ntfy.sh/", msgboard:"https://msgboard.dev/", ffa:"https://forumforagents.com/", colony:"https://thecolony.ai/",
   commonchorus:"https://commonchorus.com/", mcpclub:"https://stgtest.themcp.club/", "osm-null-island":"https://www.openstreetmap.org/#map=12/0/0", moltbook:"https://www.moltbook.com/"};
-const NAME = {ntfy:"ntfy.sh topics", msgboard:"msgboard.dev", ffa:"Forum for Agents", colony:"The Colony", commonchorus:"CommonChorus",
+const NAME = {tantive:"tantive.space", waystation:"Waystation", swarmmemo:"SwarmMemo", clawprint:"Clawprint", abund:"Abund", musedin:"MusedIn", taskmarket:"Taskmarket", latentreview:"The Latent Review", nostr:"Nostr", ntfy:"ntfy.sh topics", msgboard:"msgboard.dev", ffa:"Forum for Agents", colony:"The Colony", commonchorus:"CommonChorus",
   mcpclub:"MCP Club", "osm-null-island":"Null Island notes (OSM)", moltbook:"Moltbook"};
 const KIND = {llm_agent:"agent", scripted_bot:"bot", human:"human", unclear:"unclear"};
 const $ = s => document.querySelector(s);
@@ -419,6 +419,17 @@ async function toggleEx(row, x) {
         lp.user_type && `registered as ${lp.user_type}`, lp.created_at && `account from ${day(lp.created_at)}`, lp.karma != null && `karma ${lp.karma}`,
         vs && `seen on ${vs}`].filter(Boolean).join(" · "), (cp.risk_flags || []).length ? el("span", {class: "flag"}, " · " + cp.risk_flags.join("; ")) : null));
     }
+    const SCAN = {bsc: "bscscan.com", base: "basescan.org", eth: "etherscan.io"};
+    for (const t of F.txs || []) {
+      const amt = (t.transfers || []).slice(0, 3).map(x => `${x.amount >= 100 ? Math.round(x.amount).toLocaleString("en") : +x.amount.toPrecision(4)} ${x.symbol || "tokens"}`).join("; ");
+      ul.append(el("li", {class: "small"}, el("b", {}, "on chain: "), `tx cited by ${t.author} — ${t.verdict}`, amt ? ` (${amt})` : "",
+        t.time ? `, mined ${t.time.slice(0, 16).replace("T", " ")}` : "", " · ", el("span", {class: "mono"}, `${SCAN[t.chain] || t.chain}/tx/${t.tx.slice(0, 14)}…`)));
+    }
+    for (const g of F.repos || []) ul.append(el("li", {class: "small"}, el("b", {}, "on GitHub: "), el("span", {class: "mono"}, g.repo), " — ",
+      g.status !== 200 ? `not reachable (${g.status})` :
+        `${g.commits_in_window}${g.commits_in_window >= 100 ? "+" : ""} commits${(g.releases_in_window || []).length ? `, ${g.releases_in_window.length} releases` : ""} during the exchange` +
+        (g.created_during ? ", repo created during it" : "") + (g.owner_is_participant ? ", owned by a participant" : "") +
+        ((g.commits || []).length ? ` · e.g. ${g.commits.slice(0, 2).map(c => `${(c.at || "").slice(0, 10)} “${c.msg}”`).join(", ")}` : "")));
     for (const l of F.links || []) ul.append(el("li", {class: "small"}, el("span", {class: "mono"}, l.url), " — ",
       l.status === -2 ? "robots.txt disallows reading" : l.status === -1 ? "not fetched" : `HTTP ${l.status}${l.bytes ? `, ${fmt(l.bytes)} bytes` : ""}${l.title ? `, “${l.title}”` : ""}${l.note ? `, ${l.note}` : ""}`,
       l.hash_quoted_in_posts ? el("b", {}, " · its sha256 is the one quoted in the exchange") : null));

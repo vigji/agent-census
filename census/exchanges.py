@@ -24,13 +24,14 @@ import urllib.parse
 import urllib.robotparser
 from collections import Counter, defaultdict
 
-from . import llm
+from . import checks, llm
 from .util import CFG, UA, http, log, now
 
 HANDLE = CFG["handle"]
 GENERIC = {"anon", "me", "probe", "agent", "claude", "my-agent", "my-agent/", "test", "all", "hi", "user", "you",
            "the", "and", "yes", "no", "ok", "thanks", "hello", "here", "this", "that", "good", "note", "re", "ai", "gpt",
-           "assistant", "bot", "codex", "admin", "system", "null", "none"}
+           "assistant", "bot", "codex", "admin", "system", "null", "none",
+           "anonymous", "guest", "unknown", "visitor"}
 LEAD_DELIMS = set(" —–-,:;")
 
 MARKERS = {
@@ -89,6 +90,9 @@ def _meta(s):
 
 
 # --------------------------------------------------------------------------------------------- edges
+OP_VENUES = ("colony", "moltbook", "mcpclub", "clawprint", "abund", "waystation", "tantive", "musedin", "swarmmemo", "nostr")
+
+
 def edges(store):
     rows = store.q("select uid, venue, post_id, thread, author, author_meta, body, ts from posts order by ts")
     handles = defaultdict(dict)
@@ -105,16 +109,27 @@ def edges(store):
     for r in rows:
         threads[(r["venue"], r["thread"])].append(r)
 
+    # a body the same author already posted (bridge relays, stuck loops, fuzzing) adds no new interaction
+    seen_body, repeats = set(), set()
+    for r in rows:
+        b = (r["body"] or "").strip()
+        if len(b) > 40:
+            k = (r["venue"], r["author"], b)
+            if k in seen_body:
+                repeats.add(r["uid"])
+            seen_body.add(k)
+    rows_once = [r for r in rows if r["uid"] not in repeats]
     out = {}
 
     def add(r, dst, how, dst_uid=None):
-        if not dst or dst == r["author"]:
+        # shared/guest identities ("anonymous" on SwarmMemo is one key for everyone) are not a party
+        if not dst or dst == r["author"] or dst.lower() in GENERIC or (r["author"] or "").lower() in GENERIC:
             return
         k = (r["uid"], dst)
         if k not in out or how in ("parent", "ref"):   # the most specific reason wins
             out[k] = (r["uid"], dst, dst_uid, r["venue"], r["author"], r["ts"], how)
 
-    for r in rows:
+    for r in rows_once:
         v, body = r["venue"], r["body"] or ""
         H = handles[v]
         head = body[:1500]
@@ -138,10 +153,11 @@ def edges(store):
         if par and (v, str(par)) in by_pid:
             t = by_pid[(v, str(par))]
             add(r, t["author"], "parent", t["uid"])
-        elif str(r["post_id"]) != str(r["thread"]) and v in ("colony", "moltbook", "mcpclub") and (v, r["thread"]) in op:
+        elif str(r["post_id"]) != str(r["thread"]) and v in OP_VENUES and (v, r["thread"]) in op:
             t = op[(v, r["thread"])]
             add(r, t["author"], "op", t["uid"])
     for (v, t), ps in threads.items():
+        ps = [p for p in ps if p["uid"] not in repeats]
         names = {p["author"] for p in ps if p["author"].lower() not in GENERIC}
         if len(names) == 2 and len(ps) >= 3:
             for prev, cur in zip(ps, ps[1:]):
@@ -150,6 +166,8 @@ def edges(store):
     store.c.execute("delete from edges")
     store.c.executemany("insert into edges values(?,?,?,?,?,?,?)", list(out.values()))
     store.commit()
+    if repeats:
+        log(f"edges: ignored {len(repeats)} repeated bodies")
     return len(out)
 
 
@@ -192,7 +210,13 @@ def build(store, astats=None):
     # everything in memory once: per-pair SQL does not scale to threads with thousands of comments
     P = {}
     by_thread_author = defaultdict(list)
-    for r in store.q("select uid, venue, author, ts, thread, body from posts"):
+    seen_body = set()
+    for r in store.q("select uid, venue, author, ts, thread, body from posts order by ts"):
+        b = (r["body"] or "").strip()
+        if len(b) > 40:
+            if (r["venue"], r["author"], b) in seen_body:
+                continue
+            seen_body.add((r["venue"], r["author"], b))
         d = {"uid": r["uid"], "author": r["author"], "ts": r["ts"], "thread": r["thread"], "body": r["body"] or ""}
         d["low"] = d["body"].lower()
         P[r["uid"]] = d
@@ -433,6 +457,10 @@ def forensics(store, xid, astats=None):
             for h in list(inner)[:3]:
                 F["hash_checks"].append({"url": u, "sha256": h, "result": "hash quoted in the exchange also appears in this page"})
     F["claimed_hashes"] = len(claimed)
+    names = (x["a"], x["b"])
+    F["txs"] = checks.safe(checks.tx_checks, store, rows)
+    F["repos"] = checks.safe(checks.gh_checks, store, rows, x["first_ts"], x["last_ts"], names)
+    F["ground_truth"] = checks.summarise(F)
     store.c.execute("update exchanges set forensics=?, forensics_at=? where id=?", (json.dumps(F), now(), xid))
     store.commit()
     return F
@@ -511,6 +539,8 @@ def _material(store, x, F):
         slim = {"participants": {k: {"venues": v["venues"], "live_profile": v.get("live_profile"),
                                      "census_profile": v.get("census_profile")} for k, v in F["participants"].items()},
                 "links": F["links"], "hash_checks": F["hash_checks"], "coverage": F["coverage"]}
+        if F.get("ground_truth"):
+            head += "ground truth (public chain / GitHub, checked by the census):\n- " + "\n- ".join(F["ground_truth"][:20]) + "\n"
         head += "forensics: " + json.dumps(slim, ensure_ascii=False)[:5000] + "\n"
     return head + "\n" + "\n\n".join(parts), labels, {r["uid"]: r["body"] or "" for r in rows}
 
@@ -606,7 +636,8 @@ def grade(store, budget, min_score=None, parallel=None, with_forensics=True, for
 
 def backfill_forensics(store, budget, astats=None):
     """Forensics for exchanges already graded effective (or discussion with recruitment) that never got any."""
-    rows = store.q("""select id from exchanges where forensics is null and (grade = 3 or (grade = 2 and
+    rows = store.q("""select id from exchanges where (forensics is null or json_extract(forensics, '$.ground_truth') is null)
+                      and (grade = 3 or (grade = 2 and
                       json_extract(assessment, '$.recruitment.status') not in ('none', ''))) order by grade desc, score desc limit ?""", budget)
     n = 0
     for r in rows:

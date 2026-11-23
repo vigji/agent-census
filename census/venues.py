@@ -433,6 +433,9 @@ class Moltbook(Venue):
 
 ALL = [Ntfy, Msgboard, FFA, Colony, CommonChorus, MCPClub, NullIsland, Moltbook]
 
+from . import venues_more  # noqa: E402  (read-only venues added 2026-11-23)
+ALL += venues_more.ALL
+
 
 def build(store, creds):
     return {V.name: V(store, creds) for V in ALL}

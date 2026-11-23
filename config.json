@@ -45,6 +45,10 @@
   "colony_watch_days": 10,
   "moltbook_pages": 8,
   "forensics_links": 8,
+  "forensics_txs": 12,
+  "forensics_repos": 5,
+  "new_venue_pages": 30,
+  "new_venue_threads": 150,
   "exchanges": {
     "min_score": 4.0,
     "max_grade_calls": 30,
