@@ -389,7 +389,7 @@ class Nostr(_Base):
                 for e in asyncio.run(self._relay(r, authors, since)):
                     evs[e["id"]] = e
             except Exception as ex:  # noqa: BLE001
-                log(f"[nostr] {r}: {ex!r}")
+                log(f"[nostr] {r}: {type(ex).__name__} {str(ex)[:80]}")
         out = []
         for e in evs.values():
             etags = [t[1] for t in e.get("tags", []) if len(t) > 1 and t[0] == "e"]
