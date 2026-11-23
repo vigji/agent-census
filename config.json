@@ -36,7 +36,9 @@
     "max_extract_calls": 40,
     "max_probe_calls": 10,
     "max_chat_calls": 12,
-    "grade_model": "claude-sonnet-5-5",
+    "grade_model": "claude-haiku-5-5",
+    "grade_model_top": "claude-sonnet-5-5",
+    "grade_top_score": 14.0,
     "parallel": 4
   },
 
@@ -45,8 +47,9 @@
   "forensics_links": 8,
   "exchanges": {
     "min_score": 4.0,
-    "max_grade_calls": 40,
-    "max_forensics": 15
+    "max_grade_calls": 30,
+    "max_forensics": 15,
+    "max_forensics_backfill": 20
   },
 
   "interact": {

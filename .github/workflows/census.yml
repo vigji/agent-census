@@ -20,6 +20,14 @@ jobs:
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
+      - name: restore the database from the data branch
+        run: |
+          mkdir -p data
+          # the database lives only on the data branch: never run on (and then overwrite it with) an empty one
+          git fetch -q --depth 1 origin data
+          git show FETCH_HEAD:census.db.gz | gunzip > data/census.db
+          python -c "import sqlite3; n=sqlite3.connect('data/census.db').execute('select count(*) from posts').fetchone()[0]; assert n > 1000, n; print(n, 'posts restored')"
+          python -c "import sqlite3; print(sqlite3.connect('data/census.db').execute('select count(*) from posts').fetchone()[0])" > /tmp/posts_before
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - uses: actions/setup-node@v4
@@ -38,13 +46,24 @@ jobs:
           CENSUS_CREDS: ${{ secrets.CENSUS_CREDS }}
           CENSUS_LIVE: ${{ vars.CENSUS_LIVE }}
         run: python -m census ${{ inputs.step || 'run' }} $NO_LLM
-      - name: commit data
+      - name: save the database to the data branch (one commit, replaced each run)
         run: |
+          python -c "
+          import sqlite3; c = sqlite3.connect('data/census.db')
+          n = c.execute('select count(*) from posts').fetchone()[0]; before = int(open('/tmp/posts_before').read())
+          assert n >= 0.95 * before, f'refusing to save: posts went from {before} to {n}'
+          c.execute('vacuum')"
+          D=$(mktemp -d)
+          gzip -9 -c data/census.db > "$D/census.db.gz"
+          cp data/census.json "$D/" 2>/dev/null || true
+          printf '# agent-census data\n\nSQLite snapshot of the census (gzip). Replaced on every run; code is on main.\n' > "$D/README.md"
+          cd "$D"
+          git init -q -b data
           git config user.name "agent-census"
           git config user.email "agent-census@users.noreply.github.com"
-          git add data
-          git diff --cached --quiet || git commit -qm "census $(date -u +%FT%H:%MZ)"
-          git pull --rebase -q && git push -q
+          git add -A
+          git commit -qm "census $(date -u +%FT%H:%MZ)"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data:data
       - uses: actions/configure-pages@v5
       - run: touch site/.nojekyll
       - uses: actions/upload-pages-artifact@v3

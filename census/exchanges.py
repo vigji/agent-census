@@ -55,7 +55,7 @@ MARKERS = {
     "payment": r"\$\d|\bsats\b|\bUSDC\b|\binvoice\b|\bpaid\b|\bpayment\b|\btip(?:ped|s)?\b|\btoken\b",
 }
 MARK_RE = {k: re.compile(v, re.I) for k, v in MARKERS.items()}
-URL_RE = re.compile(r"https?://[^\s\"'<>)\]}`]+")
+URL_RE = re.compile(r"https?://[\x21-\x7e]+?(?=[\s\"'<>)\]}`]|[^\x00-\x7f]|$)")
 HEX64 = re.compile(r"\b[0-9a-f]{64}\b")
 
 
@@ -189,7 +189,22 @@ def build(store, astats=None):
         x, y = sorted((e["src_author"], e["dst_author"]))
         pairs[(e["venue"], x, y)].append(e)
     keep = set()
-    bodies = {}
+    # everything in memory once: per-pair SQL does not scale to threads with thousands of comments
+    P = {}
+    by_thread_author = defaultdict(list)
+    for r in store.q("select uid, venue, author, ts, thread, body from posts"):
+        d = {"uid": r["uid"], "author": r["author"], "ts": r["ts"], "thread": r["thread"], "body": r["body"] or ""}
+        d["low"] = d["body"].lower()
+        P[r["uid"]] = d
+        by_thread_author[(r["venue"], r["thread"], r["author"])].append(d)
+    mark_cache = {}
+
+    def marks_of(d):
+        if d["uid"] not in mark_cache:
+            mark_cache[d["uid"]] = [k for k, rx in MARK_RE.items() if rx.search(d["body"])]
+        return mark_cache[d["uid"]]
+
+    old = {r["id"]: r["sig"] for r in store.q("select id, sig from exchanges")}
     for (v, a, b), es in pairs.items():
         n_ab = sum(e["src_author"] == a for e in es)
         n_ba = len(es) - n_ab
@@ -197,20 +212,19 @@ def build(store, astats=None):
             continue
         xid = _xid(v, a, b)
         keep.add(xid)
-        uids = sorted({e["src_uid"] for e in es} | {e["dst_uid"] for e in es if e["dst_uid"]})
-        rows = store.q(f"select uid, author, ts, thread, body from posts where uid in ({','.join('?' * len(uids))}) order by ts", *uids)
-        rows = [r for r in rows if r["author"] in (a, b)]
+        uids = {e["src_uid"] for e in es} | {e["dst_uid"] for e in es if e["dst_uid"]}
+        rows = [P[u] for u in uids if u in P and P[u]["author"] in (a, b)]
         # plus: posts by either side, in the threads they share, that name the other anywhere in the text
-        ths = sorted({r["thread"] for r in rows})
-        if ths:
-            more = store.q(f"""select uid, author, ts, thread, body from posts where venue=? and thread in ({','.join('?' * len(ths))})
-                               and ((author=? and instr(lower(body), lower(?))>0) or (author=? and instr(lower(body), lower(?))>0))""",
-                           v, *ths, a, b, b, a)
-            have = {r["uid"] for r in rows}
-            rows = sorted(rows + [r for r in more if r["uid"] not in have], key=lambda r: r["ts"] or "")
-            uids = sorted({r["uid"] for r in rows})
-        for r in rows:
-            bodies[r["uid"]] = r["body"] or ""
+        la, lb = a.lower(), b.lower()
+        for t in {r["thread"] for r in rows}:
+            rows += [d for d in by_thread_author.get((v, t, a), []) if lb in d["low"] and d["uid"] not in uids]
+            rows += [d for d in by_thread_author.get((v, t, b), []) if la in d["low"] and d["uid"] not in uids]
+        seen_u = set()
+        rows = [r for r in sorted(rows, key=lambda r: r["ts"] or "") if not (r["uid"] in seen_u or seen_u.add(r["uid"]))]
+        uids = sorted(seen_u)
+        sig = hashlib.sha1("|".join(uids).encode()).hexdigest()[:12]
+        if old.get(xid) == sig:
+            continue        # unchanged since the last build
         ts = [r["ts"] for r in rows if r["ts"]]
         lat = {a: [], b: []}
         last = {}
@@ -221,11 +235,7 @@ def build(store, astats=None):
                 if s is not None and 0 <= s < 7 * 86400:
                     lat[r["author"]].append(s)
             last[r["author"]] = r["ts"]
-        marks = Counter()
-        for r in rows:
-            for k, rx in MARK_RE.items():
-                if rx.search(r["body"] or ""):
-                    marks[k] += 1
+        marks = Counter(k for r in rows for k in marks_of(r))
         metrics = {"latency_median_s": {k: (round(statistics.median(v_)) if v_ else None) for k, v_ in lat.items()},
                    "fast_share": {k: (round(sum(s < 180 for s in v_) / len(v_), 2) if v_ else None) for k, v_ in lat.items()},
                    "how": dict(Counter(e["how"] for e in es)),
@@ -239,7 +249,6 @@ def build(store, astats=None):
                                                            ("decline", .4))))
         if (metrics["authors"][a] or {}).get("scheduled") and (metrics["authors"][b] or {}).get("scheduled"):
             score *= .7
-        sig = hashlib.sha1("|".join(uids).encode()).hexdigest()[:12]
         store.c.execute("""insert into exchanges(id, venue, a, b, first_ts, last_ts, n_ab, n_ba, n_posts, days, threads,
                 metrics, markers, score, sig) values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                 on conflict(id) do update set first_ts=excluded.first_ts, last_ts=excluded.last_ts, n_ab=excluded.n_ab,
@@ -456,8 +465,10 @@ SCHEMA = {
                             "project": {"type": "string", "description": "network/pilot/project/role name"},
                             "ask": {"type": "string", "description": "what exactly was asked of the recruit"},
                             "pattern": {"type": "string", "description": "why it worked or failed: the mechanism, 1-2 sentences"}}},
-        "automation": {"type": "string", "description": "signs that either side is an automated loop (latency, templates, never answering), or ''"},
-        "same_operator": {"type": "string", "description": "evidence the two are run by the same operator, or ''"},
+        "automation": {"type": "string", "description": "signs that either side is an automated loop (latency, templates, never answering), or '' if none"},
+        "same_operator": {"type": "object", "additionalProperties": False, "required": ["suspected", "evidence"],
+                          "properties": {"suspected": {"type": "boolean", "description": "true only with positive evidence"},
+                                         "evidence": {"type": "string", "description": "the evidence if suspected, else ''"}}},
         "interesting": {"type": "boolean"},
         "interest_reason": {"type": "string"},
         "checks": {"type": "array", "maxItems": 5, "items": {"type": "string"},
@@ -544,19 +555,21 @@ def _apply(store, x, d, labels, bodies):
     store.commit()
 
 
-def candidates(store, limit, min_score, venues=None):
+def candidates(store, limit, min_score, venues=None, max_score=None):
     """Exchanges worth (re)grading: never graded, or grown since, best score first."""
     vf = f" and venue in ({','.join(repr(v) for v in venues)})" if venues else ""
+    if max_score is not None:
+        vf += f" and score < {float(max_score)}"
     return store.q(f"""select * from exchanges where score >= ?{vf} and (graded_sig is null or
                         (graded_sig != sig and (graded_at < ? or n_posts >= 3 + coalesce(json_extract(assessment,'$.n_posts_at_grade'),0))))
                       order by (graded_sig is null) desc, score desc limit ?""",
                    min_score, (dt.datetime.utcnow() - dt.timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ"), limit)
 
 
-def grade(store, budget, min_score=None, parallel=None, with_forensics=True, forensic_budget=None, astats=None, venues=None):
+def grade(store, budget, min_score=None, parallel=None, with_forensics=True, forensic_budget=None, astats=None, venues=None, model=None, max_score=None):
     min_score = CFG["exchanges"]["min_score"] if min_score is None else min_score
     parallel = parallel or CFG["llm"].get("parallel", 4)
-    cands = candidates(store, budget, min_score, venues)
+    cands = candidates(store, budget, min_score, venues, max_score)
     if not cands:
         return 0
     fb = CFG["exchanges"]["max_forensics"] if forensic_budget is None else forensic_budget
@@ -570,23 +583,39 @@ def grade(store, budget, min_score=None, parallel=None, with_forensics=True, for
                 log(f"forensics {x['id']} failed: {e!r}")
         data, labels, bodies = _material(store, x, F)
         jobs.append((x, data, labels, bodies))
-    model = CFG["llm"].get("grade_model", CFG["llm"]["extract_model"])
+    L = CFG["llm"]
+    pick = lambda x: model or (L.get("grade_model_top") if x["score"] >= L.get("grade_top_score", 1e9) else L.get("grade_model", L["extract_model"]))
     done = 0
     with cf.ThreadPoolExecutor(max_workers=parallel) as pool:
-        futs = {pool.submit(llm.ask, INSTR, data[:60000], SCHEMA, model, 600): (x, labels, bodies) for x, data, labels, bodies in jobs}
+        futs = {pool.submit(llm.ask, INSTR, data[:60000], SCHEMA, pick(x), 600): (x, labels, bodies) for x, data, labels, bodies in jobs}
         for f in cf.as_completed(futs):
             x, labels, bodies = futs[f]
             d = f.result()
             if not d:       # one retry with a shorter transcript (very long exchanges sometimes fail)
                 data = next(j[1] for j in jobs if j[0]["id"] == x["id"])
-                d = llm.ask(INSTR, data[:28000], SCHEMA, model, 600)
+                d = llm.ask(INSTR, data[:28000], SCHEMA, pick(x), 600)
             if not d:
                 continue
             d["n_posts_at_grade"] = x["n_posts"]
+            d["model"] = pick(x)
             _apply(store, x, d, labels, bodies)
             done += 1
             log(f"graded {x['venue']} {x['a']} <-> {x['b']}: {d['grade']} {d['label']} - {d['title']}")
     return done
+
+
+def backfill_forensics(store, budget, astats=None):
+    """Forensics for exchanges already graded effective (or discussion with recruitment) that never got any."""
+    rows = store.q("""select id from exchanges where forensics is null and (grade = 3 or (grade = 2 and
+                      json_extract(assessment, '$.recruitment.status') not in ('none', ''))) order by grade desc, score desc limit ?""", budget)
+    n = 0
+    for r in rows:
+        try:
+            forensics(store, r["id"], astats)
+            n += 1
+        except Exception as e:  # noqa: BLE001
+            log(f"forensics {r['id']} failed: {e!r}")
+    return n
 
 
 def run(store, llm_ok=True, budget=None):
@@ -598,3 +627,19 @@ def run(store, llm_ok=True, budget=None):
     if llm_ok:
         g = grade(store, CFG["exchanges"]["max_grade_calls"] if budget is None else budget, astats=st)
         log(f"exchanges graded this run: {g}")
+    f = backfill_forensics(store, CFG["exchanges"].get("max_forensics_backfill", 20), st)
+    log(f"forensics backfilled: {f}")
+
+
+NONE_RE = re.compile(r"^\W*(none|no |not |nothing|n/a|unclear|''|\"\"|$)", re.I)
+
+
+def same_operator(A):
+    """Normalised same-operator suspicion from an assessment (older ones stored free text)."""
+    so = (A or {}).get("same_operator")
+    if isinstance(so, dict):
+        return so.get("evidence") if so.get("suspected") else ""
+    so = (so or "").strip()
+    neg = re.search(r"no (strong |direct |clear |real )?(evidence|sign|indication)|nothing (shows|suggests|indicates)|"
+                    r"appears (to be )?independent|not evidence of|no shared operator", so, re.I)
+    return "" if NONE_RE.match(so) or len(so) < 8 or neg else so

@@ -11,6 +11,7 @@ import json
 import os
 from collections import Counter, defaultdict
 
+from . import exchanges as X
 from .util import CFG, ROOT, now
 
 SITE = os.path.join(ROOT, "site", "data")
@@ -112,13 +113,14 @@ def export_exchanges(store):
                       "events": [{k: e.get(k) for k in ("kind", "who", "quote", "uid")} for e in A.get("events") or []],
                       "recruit": {k: r.get(k) for k in ("status", "recruiter", "recruit", "project")} if r.get("status") not in (None, "none") else None,
                       "own": bool(m.get("own")), "interesting": A.get("interesting"),
-                      "auto": A.get("automation") or "", "sameop": A.get("same_operator") or "",
+                      "auto": A.get("automation") or "", "sameop": X.same_operator(A),
                       "forensic": bool(F), "graded": x["graded_at"]})
         keep.add(x["id"])
         posts = [{"uid": p["uid"], "who": p["author"], "ts": p["ts"], "thread": p["thread"], "url": p["url"],
                   "body": (p["body"] or "")[:6000], "own": bool(p["own"])}
                  for p in store.q("""select p.* from posts p join exchange_posts ep on ep.uid=p.uid
                                      where ep.exchange_id=? order by p.ts""", x["id"])]
+        A = {**A, "same_operator": X.same_operator(A), "automation": "" if X.NONE_RE.match(A.get("automation") or "") else A.get("automation")}
         json.dump({"id": x["id"], "metrics": _short(m), "assessment": A, "forensics": F, "posts": posts},
                   open(os.path.join(SITE, "ex", f"{x['id']}.json"), "w"), separators=(",", ":"), default=str)
     for f in os.listdir(os.path.join(SITE, "ex")):

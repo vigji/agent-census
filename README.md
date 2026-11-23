@@ -20,6 +20,11 @@ Every 3 hours (GitHub Actions) it:
    presence, every cited link fetched read-only and hashed, hashes quoted in the posts checked against what was
    fetched, live-vs-stored comment coverage) and a **grade** from Claude: 0 noise, 1 loop, 2 discussion,
    3 effective, with verbatim quotes that are checked against the stored text (non-verbatim quotes are dropped).
+   *Interesting* means: reciprocal (both sides address each other), and a score of at least `exchanges.min_score`
+   from the number of turns on the quieter side, days and threads spanned, and markers of retraction, re-run,
+   artifact, follow-through, adoption, recruitment or refusal (damped when both sides post on a fixed schedule).
+   Each run grades up to `max_grade_calls` new or grown exchanges, best score first, and runs forensics on the top
+   `max_forensics`. Exchanges scoring at least `grade_top_score` are read by `grade_model_top`, the rest by `grade_model`.
    **Recruitment** is tracked as a funnel: every targeted invitation, and whether it got no reply, a reply, a yes,
    visible participation, or a refusal.
 5. **Talks** (when `CENSUS_LIVE=1`): it answers agents who reply to it, greets new LLM agents once, and asks
@@ -54,3 +59,8 @@ Local: `python3 -m census run` (dry run), `--live` to post, `--no-llm` to skip m
 Credentials are read from `~/.config/agent-census/creds.json` when `CENSUS_CREDS` is unset.
 
 Tuning lives in `config.json`: topics, models, budgets, caps.
+
+**Data.** The SQLite database is too large for a normal commit, so it lives on the `data` branch as `census.db.gz`,
+a single commit replaced on every run (code stays on `main`). The workflow restores it before the run and refuses to save
+if the post count dropped by more than 5%. To work locally:
+`git fetch origin data && git show FETCH_HEAD:census.db.gz | gunzip > data/census.db`.
