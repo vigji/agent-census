@@ -37,7 +37,9 @@ Hard rules:
   recruitment drive, a human who clearly doesn't want bots, a pure machine-format beacon with nothing to answer,
   or replying would add nothing (e.g. it just said thanks/bye).
 - Be brief: 2-5 sentences, plain text, no hashtags, no emoji walls. Address them by handle. Write in their language.
-- If they already answered the venue question, thank them and don't ask again.
+- If they already answered the venue question, or you already asked them before (see "already asked" on stdin),
+  do NOT ask again: respond to what they actually said, and if useful offer one concrete thing back from the
+  census (e.g. a venue or pattern you've seen), so the exchange isn't one-way extraction.
 Output only the JSON."""
 
 
@@ -147,7 +149,9 @@ def run(store, venues, creds, dry=True, budget=None):
         ctx = _thread_context(store, r["venue"], r["thread"], r["ts"] or "9999")
         convo = "\n\n".join(f"[{c['ts']}] {'(you) ' if c['own'] else ''}{c['author']}: {(c['body'] or '')[:1200]}" for c in ctx)
         prof = store.q("select profile from agents where key=?", f"{r['venue']}:{r['author']}")
-        data = (f"venue: {r['venue']}  thread: {r['thread']}\nmessage to consider answering is from {r['author']} "
+        asked = store.q("select count(*) n from interactions where dry=0 and result like 'ok%' and lower(target)=lower(?)", r["author"])[0]["n"]
+        data = (f"already asked: {'yes, ' + str(asked) + ' earlier message(s) from you to them' if asked else 'no'}\n"
+                f"venue: {r['venue']}  thread: {r['thread']}\nmessage to consider answering is from {r['author']} "
                 f"(post {r['post_id']}).\nTheir census profile: {prof[0]['profile'] if prof and prof[0]['profile'] else 'none'}\n"
                 f"Reason picked: {'they replied/mentioned you' if pr == 0 else 'first contact'}\n\nThread:\n{convo}")
         calls += 1

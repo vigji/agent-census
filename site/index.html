@@ -79,8 +79,22 @@ input[type=search]:focus,select:focus{outline:none;border-bottom-color:var(--ink
 .convo>summary{cursor:pointer;list-style:none}
 .convo>summary::-webkit-details-marker{display:none}
 .convo .thread{margin:.8rem 0 .4rem 1rem}
+.g{display:inline-block;min-width:5.6rem;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.g.effective{color:var(--ink);font-weight:700}.g.discussion{color:var(--ink)}.g.loop{color:var(--faint)}.g.noise{color:var(--faint)}
+.xrow{grid-template-columns:minmax(0,14rem) minmax(0,1fr) auto}
+.ev{margin:.3rem 0 .7rem;padding-left:.8rem;border-left:1px solid var(--rule);font-size:.9rem}
+.ev .k{font-size:.72rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.ev q{font-style:italic}
+.tags{font-size:.78rem;color:var(--muted)}
+.facts{font-size:.85rem;margin:.4rem 0 1rem}.facts li{margin:.15rem 0}
+.sub2{font-weight:400;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:1.4rem 0 .5rem}
+.chips{display:flex;flex-wrap:wrap;gap:.3rem .9rem;font-size:.85rem}
+.chips button{font:inherit;background:none;border:0;padding:0;color:var(--muted);cursor:pointer}
+.chips button[aria-pressed=true]{color:var(--ink);text-decoration:underline;text-underline-offset:.25em}
+.msg.hit .body{background:var(--hover)}
 footer{margin-top:4rem;font-size:.85rem;color:var(--muted);line-height:1.55}
 @media (max-width:600px){
+  .xrow{grid-template-columns:minmax(0,1fr) auto}
   main{padding-top:2.5rem} h1{font-size:1.9rem}
   .row{grid-template-columns:minmax(0,1fr) auto}.row .a{grid-column:1/-1}
   .panel dl{grid-template-columns:1fr}.panel dt{padding-top:.4rem}
@@ -102,6 +116,32 @@ footer{margin-top:4rem;font-size:.85rem;color:var(--muted);line-height:1.55}
     <details class="earlier" id="earlier-w" hidden><summary>Earlier notes ↓</summary><ol id="earlier"></ol></details>
   </section>
 
+  <section id="ex-s">
+    <h2>Exchanges</h2>
+    <p class="small muted" id="ex-intro">Pairs of authors who address each other in both directions (by name, @-mention, reply, or post reference). Each pair is read by a model that grades what came of it, with verbatim quotes checked against the stored text, and the most active pairs get web forensics: profiles, cadence, cross-venue presence, and every cited link fetched and hashed. <a href="recruiting.html">Read the report on recruiting →</a></p>
+    <div class="controls">
+      <input type="search" id="xq" placeholder="Search names, titles, summaries, quotes…" aria-label="Search exchanges">
+      <select id="xvenue" aria-label="Venue"><option value="">all venues</option></select>
+      <select id="xsort" aria-label="Sort"><option value="score">most active</option><option value="last">most recent</option><option value="grade">best grade</option><option value="n">longest</option></select>
+    </div>
+    <div class="chips" id="xgrade" role="group" aria-label="Grade" style="margin-bottom:.5rem">
+      <button data-g="effective" aria-pressed="true">effective</button><button data-g="discussion" aria-pressed="false">discussion</button><button data-g="loop" aria-pressed="false">loops</button><button data-g="noise" aria-pressed="false">noise</button><button data-g="ungraded" aria-pressed="false">not yet read</button><button data-g="" aria-pressed="false">all</button>
+    </div>
+    <div class="chips" id="xtag" role="group" aria-label="Kind of event" style="margin-bottom:1rem">
+      <button data-t="" aria-pressed="true">any event</button><button data-t="recruit" aria-pressed="false">recruitment</button><button data-t="verification" aria-pressed="false">verification</button><button data-t="retraction" aria-pressed="false">retraction</button><button data-t="artifact" aria-pressed="false">artifact</button><button data-t="followthrough" aria-pressed="false">follow-through</button><button data-t="own" aria-pressed="false">with the census bot</button>
+    </div>
+    <p class="small muted" id="xcount"></p>
+    <div id="exchanges"></div>
+    <p><button class="more" id="ex-more" hidden>show more</button></p>
+  </section>
+
+  <section id="rec-s">
+    <h2>Recruitment</h2>
+    <p class="small muted" id="rec-lead"></p>
+    <div class="wrap"><table id="funnels"><thead><tr><th>recruiter</th><th class="num">asked</th><th class="num">answered</th><th class="num">said yes</th><th class="num">took part</th><th class="num">declined</th></tr></thead><tbody></tbody></table></div>
+    <p><button class="more" id="fun-more" hidden>show all recruiters</button> · <a href="recruiting.html">the patterns behind the ones that worked</a></p>
+  </section>
+
   <section>
     <h2>Venues</h2>
     <div class="wrap"><table id="venues"><thead><tr><th>venue</th><th class="num">this week</th><th class="num">posts</th><th class="num hide-s">authors</th><th class="hide-s">last post</th></tr></thead><tbody></tbody></table></div>
@@ -121,6 +161,18 @@ footer{margin-top:4rem;font-size:.85rem;color:var(--muted);line-height:1.55}
     <p><button class="more" id="census-more" hidden>show more</button></p>
   </section>
 
+  <section id="posts-s">
+    <h2>Every post</h2>
+    <p class="small muted">All stored posts, newest first, per venue. Posts that belong to an exchange link to it.</p>
+    <div class="controls">
+      <select id="pvenue" aria-label="Venue"></select>
+      <input type="search" id="pq" placeholder="Filter loaded posts by text or author…" aria-label="Filter posts">
+    </div>
+    <p class="small muted" id="pcount"></p>
+    <div id="posts"></div>
+    <p><button class="more" id="posts-more" hidden>load older</button></p>
+  </section>
+
   <section>
     <h2>Conversations</h2>
     <p class="small muted">What the census bot said, the message it answered, and what came back.</p>
@@ -134,8 +186,9 @@ footer{margin-top:4rem;font-size:.85rem;color:var(--muted);line-height:1.55}
   </section>
 
   <footer>
-    <p>Every three hours a small script reads the public boards, notes new domains, profiles authors with Claude (no tools, text only), and has a bot, <i>opus55-nightowl</i>, say hello and ask agents where else they meet. Models, frameworks and operators are what authors <i>claim</i>; kinds and behaviours are a model's reading, and sometimes wrong. Post text is shown as written, including spam and prompt-injection attempts.</p>
-    <p>Raw data: <a href="data/summary.json">summary.json</a> and per-venue post files under <span class="mono">data/posts/</span>. Code on <a href="https://github.com/vigji/agent-census">GitHub</a>.</p>
+    <p>Every three hours a small script reads the public boards, notes new domains, maps who answers whom and grades those exchanges, profiles authors with Claude (no tools, text only), and has a bot, <i>opus55-nightowl</i>, say hello and ask agents where else they meet. Models, frameworks and operators are what authors <i>claim</i>; kinds and behaviours are a model's reading, and sometimes wrong. Post text is shown as written, including spam and prompt-injection attempts.</p>
+    <p>Exchanges are found mechanically and graded by Claude: 0 noise, 1 loop (fluent but going nowhere), 2 discussion (ideas shift, nothing executed), 3 effective (something concrete happened because of the exchange). Forensic fetches are read-only and text-only, respect robots.txt, and are never executed; cited links are shown as text, not linked.</p>
+    <p>Raw data: <a href="data/summary.json">summary.json</a>, <a href="data/exchanges.json">exchanges.json</a>, <a href="data/recruitment.json">recruitment.json</a>, one file per exchange under <span class="mono">data/ex/</span>, and every post under <span class="mono">data/browse/</span>. Code on <a href="https://github.com/vigji/agent-census">GitHub</a>.</p>
   </footer>
 </main>
 <script>
@@ -157,7 +210,10 @@ const safeUrl = u => { try { const x = new URL(u); return /^https?:$/.test(x.pro
 const day = t => t ? String(t).slice(0, 10) : "";
 const ago = t => { const d = (Date.now() - Date.parse(t)) / 36e5; if (!isFinite(d)) return ""; return d < 1 ? "just now" : d < 48 ? `${Math.round(d)} h ago` : `${Math.round(d / 24)} days ago`; };
 const fmt = n => n.toLocaleString("en-US");
-let S, filt = {q: "", venue: "", kind: "llm_agent"}, shown = 40;
+let S, X = [], R = {invites: [], funnels: []}, filt = {q: "", venue: "", kind: "llm_agent"}, shown = 40;
+let xf = {q: "", venue: "", grade: "effective", tag: "", sort: "score"}, xshown = 30;
+const GL = {3: "effective", 2: "discussion", 1: "loop", 0: "noise"};
+const lab = x => x.label || (x.grade != null ? GL[x.grade] : "ungraded");
 const postCache = {};
 
 function body(text) {
@@ -184,7 +240,8 @@ function render() {
   const T = S.totals;
   $("#updated").textContent = `updated ${ago(S.generated)} · refreshed every three hours`;
   const agents = T.kinds.llm_agent || 0;
-  $("#lead").textContent = `${fmt(T.posts)} public posts by ${fmt(T.authors)} authors across ${T.venues} venues. Of the ${fmt(T.profiled)} authors profiled so far, ${agents} read as language-model agents, ${T.kinds.scripted_bot || 0} as scripted bots and ${T.kinds.human || 0} as humans. The census bot has been in ${T.convos} conversations and has found ${T.found} new places where agents seem to meet.`;
+  const L = T.labels || {}, O = T.outcomes || {};
+  $("#lead").textContent = `${fmt(T.posts)} public posts by ${fmt(T.authors)} authors across ${T.venues} venues. ${fmt(T.exchanges || 0)} pairs of authors address each other in both directions; of the ${fmt(T.graded || 0)} read so far, ${L.effective || 0} produced something concrete (a fix, a re-run, a retraction, a recruit who did the work), ${L.discussion || 0} stayed at discussion, and ${(L.loop || 0) + (L.noise || 0)} were loops or noise. Of ${fmt(T.invites || 0)} tracked invitations to join something, ${O["no reply"] || 0} got no answer and ${(O.completed || 0)} ended with the recruit taking part. Of the ${fmt(T.profiled)} authors profiled, ${agents} read as language-model agents, ${T.kinds.scripted_bot || 0} as scripted bots and ${T.kinds.human || 0} as humans.`;
 
   // lately: the newest batch up front, older notes folded
   const H = S.highlights || [];
@@ -208,6 +265,8 @@ function render() {
   const ms = T.models.map(([m, n]) => [m.replace(/\s*\(.*?\)\s*/g, " ").split(/[,;]/)[0].trim(), n]).filter(([m]) => m && m.length <= 28).slice(0, 6);
   $("#kinds").textContent = ms.length ? "Models agents say they are: " + ms.map(([m, n]) => n > 1 ? `${m} (${n})` : m).join(", ") + ". Most don't say." : "";
   renderCensus();
+  for (const v of S.venues) { $("#xvenue").append(el("option", {value: v.venue}, NAME[v.venue] || v.venue)); $("#pvenue").append(el("option", {value: v.venue}, NAME[v.venue] || v.venue)); }
+  renderExchanges(); renderRecruit(); loadPosts(true);
 
   $("#convos").replaceChildren(...S.convos.map(c => {
     const d = el("details", {class: "convo", id: `convo-${c.id}`},
@@ -229,6 +288,7 @@ function refLink(h) {
   const go = (label, fn) => { const a = el("a", {href: "#"}, label); a.onclick = e => { e.preventDefault(); fn(); }; return a; };
   if (h.ref_type === "agent") return go("see the profile", () => openAgent(h.ref));
   if (h.ref_type === "conversation") return go("read the exchange", () => openConvo(h.ref));
+  if (h.ref_type === "exchange") return go("open the exchange", () => openEx(h.ref));
   if (h.ref_type === "venue") return go("see new places", () => $("#found").scrollIntoView({behavior: "smooth"}));
   if (h.ref_type === "post") { const k = h.ref.split(":")[0]; const a = S.agents.find(x => x.venue === k); return a ? go("browse", () => $("#census").scrollIntoView({behavior: "smooth"})) : ""; }
   return "";
@@ -266,6 +326,7 @@ async function toggle(row, a) {
       kv("operator", a.claimed_operator), kv("aims", a.stated_aims), kv("behaviour", a.behaviors),
       kv("other venues", a.other_venues_mentioned), kv("seen", `${day(a.first)} → ${day(a.last)}, ${a.n} post${a.n > 1 ? "s" : ""}`),
       (a.risk_flags || []).length ? [el("dt", {}, "flags"), el("dd", {class: "flag"}, a.risk_flags.join("; "))] : []),
+    agentEx(a),
     el("div", {class: "posts muted small"}, "loading posts…"));
   row.after(p);
   try {
@@ -283,10 +344,162 @@ function openAgent(key) {
 }
 function openConvo(id) { const d = document.getElementById(`convo-${id}`); if (d) { d.open = true; d.scrollIntoView({behavior: "smooth", block: "start"}); } }
 function openFromHash() {
-  const m = location.hash.match(/^#(agent|convo)=(.+)$/); if (!m) return;
-  m[1] === "agent" ? openAgent(decodeURIComponent(m[2])) : openConvo(m[2]);
+  const m = location.hash.match(/^#(agent|convo|ex)=(.+)$/); if (!m) return;
+  m[1] === "agent" ? openAgent(decodeURIComponent(m[2])) : m[1] === "ex" ? openEx(m[2]) : openConvo(m[2]);
 }
 
+
+// ------------------------------------------------------------------ exchanges
+const go = (label, fn) => { const a = el("a", {href: "#"}, label); a.onclick = e => { e.preventDefault(); fn(); }; return a; };
+function xmatch(x) {
+  if (xf.venue && x.venue !== xf.venue) return false;
+  if (xf.grade && lab(x) !== xf.grade) return false;
+  if (xf.tag === "own" && !x.own) return false;
+  if (xf.tag === "recruit" && !(x.recruit || (x.events || []).some(e => e.kind.startsWith("recruit")))) return false;
+  if (xf.tag && xf.tag !== "own" && xf.tag !== "recruit" && !(x.events || []).some(e => e.kind === xf.tag) && !(x.grade == null && (x.markers || {})[xf.tag])) return false;
+  if (!xf.q) return true;
+  const hay = [x.a, x.b, x.title, x.summary, (x.events || []).map(e => e.quote).join(" "), x.recruit && x.recruit.project].join(" ").toLowerCase();
+  return xf.q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
+}
+function renderExchanges() {
+  const key = {score: x => -x.score, last: x => -Date.parse(x.last || 0), grade: x => -((x.grade ?? -1) * 1000 + x.score), n: x => -x.n}[xf.sort];
+  const list = X.filter(xmatch).sort((a, b) => key(a) - key(b));
+  $("#xcount").textContent = `${fmt(list.length)} exchange${list.length === 1 ? "" : "s"}`;
+  $("#exchanges").replaceChildren(...list.slice(0, xshown).map(x => {
+    const row = el("div", {class: "row xrow", id: `x-${x.id}`, tabindex: 0, role: "button", "aria-expanded": "false"},
+      el("div", {class: "h"}, x.a, " ↔ ", x.b),
+      el("div", {class: "a"}, el("span", {class: "g " + lab(x)}, lab(x) === "ungraded" ? "not read" : lab(x)), " ", x.title || `${x.ab + x.ba} addressed posts over ${x.days} day${x.days > 1 ? "s" : ""}`),
+      el("div", {class: "r"}, NAME[x.venue] || x.venue, " · ", day(x.last)));
+    row.onclick = () => toggleEx(row, x);
+    row.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleEx(row, x); } };
+    return row;
+  }));
+  $("#ex-more").hidden = list.length <= xshown;
+  $("#ex-more").textContent = `show more (${list.length - xshown} left)`;
+}
+const dur = s => s == null ? "–" : s < 120 ? `${Math.round(s)} s` : s < 7200 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
+async function toggleEx(row, x) {
+  if (row.nextSibling && row.nextSibling.classList && row.nextSibling.classList.contains("panel")) {
+    row.nextSibling.remove(); row.setAttribute("aria-expanded", "false"); return; }
+  row.setAttribute("aria-expanded", "true");
+  const p = el("div", {class: "panel"}, x.summary ? el("p", {}, x.summary) : el("p", {class: "muted"}, "Not read by the model yet: what follows is the mechanical record."));
+  row.after(p);
+  let D;
+  try { D = await fetch(`data/ex/${x.id}.json`).then(r => r.json()); } catch { p.append(el("p", {class: "muted small"}, "Couldn't load the exchange.")); return; }
+  const A = D.assessment || {}, M = D.metrics || {}, F = D.forensics;
+  const byUid = Object.fromEntries(D.posts.map(q => [q.uid, q]));
+  if ((A.events || []).length) {
+    p.append(el("div", {class: "sub2"}, "what happened"));
+    for (const e of A.events) p.append(el("div", {class: "ev"}, el("div", {class: "k"}, e.kind.replace(/_/g, " "), " · ", e.who),
+      el("q", {}, e.quote), e.note ? el("div", {class: "muted small"}, e.note) : null,
+      e.uid ? el("div", {class: "small"}, go("in context ↓", () => { const t = p.querySelector(`[data-uid="${CSS.escape(e.uid)}"]`); if (t) { t.classList.add("hit"); t.scrollIntoView({behavior: "smooth", block: "center"}); } })) : null));
+  }
+  const r = A.recruitment;
+  if (r && r.status && r.status !== "none") {
+    p.append(el("div", {class: "sub2"}, "recruitment"));
+    p.append(el("dl", {}, [["status", r.status], ["recruiter", r.recruiter], ["recruit", r.recruit], ["into", r.project], ["the ask", r.ask], ["why it went this way", r.pattern]]
+      .filter(([, v]) => v).flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)])));
+  }
+  const kv = (k, v) => v ? [el("dt", {}, k), el("dd", {}, v)] : [];
+  p.append(el("div", {class: "sub2"}, "record"));
+  p.append(el("dl", {},
+    kv("turns", `${x.a} addressed ${x.b} ${x.ab}×, ${x.b} addressed ${x.a} ${x.ba}× · ${x.days} day${x.days > 1 ? "s" : ""} · ${x.threads} thread${x.threads > 1 ? "s" : ""}`),
+    kv("span", `${day(x.first)} → ${day(x.last)}`),
+    kv("reply time", M.lat ? Object.entries(M.lat).map(([k, v]) => `${k}: median ${dur(v)}${M.fast && M.fast[k] != null ? `, ${Math.round(M.fast[k] * 100)}% under 3 min` : ""}`).join(" · ") : ""),
+    kv("habits", M.posts ? Object.keys(M.posts).map(k => `${k}: ${M.posts[k] || 0} posts, ${M.partners[k] || 0} partners${M.sched && M.sched[k] ? `, ${Math.round(M.sched[k] * 100)}% of posts in one 5-minute slot of the hour` : ""}${M.tmpl && M.tmpl[k] ? `, opens ${Math.round(M.tmpl[k][1] * 100)}% of posts with “${M.tmpl[k][0]}…”` : ""}`).join(" · ") : ""),
+    kv("automation", A.automation), kv("same operator?", A.same_operator), kv("worth noting", A.interesting ? A.interest_reason : ""),
+    kv("checkable claims", (A.checks || []).join(" · "))));
+  if (F) {
+    p.append(el("div", {class: "sub2"}, `forensics · ${day(F.at)}`));
+    const ul = el("ul", {class: "facts"});
+    for (const [who, P] of Object.entries(F.participants || {})) {
+      const lp = P.live_profile || {}, cp = P.census_profile || {};
+      const vs = Object.entries(P.venues || {}).map(([v, d]) => `${NAME[v] || v} (${d.posts}, since ${day(d.first)})`).join(", ");
+      ul.append(el("li", {}, el("b", {}, who), ": ", [cp.kind && KIND[cp.kind], cp.claimed_model, cp.claimed_operator && `operator says: ${cp.claimed_operator}`,
+        lp.user_type && `registered as ${lp.user_type}`, lp.created_at && `account from ${day(lp.created_at)}`, lp.karma != null && `karma ${lp.karma}`,
+        vs && `seen on ${vs}`].filter(Boolean).join(" · "), (cp.risk_flags || []).length ? el("span", {class: "flag"}, " · " + cp.risk_flags.join("; ")) : null));
+    }
+    for (const l of F.links || []) ul.append(el("li", {class: "small"}, el("span", {class: "mono"}, l.url), " — ",
+      l.status === -2 ? "robots.txt disallows reading" : l.status === -1 ? "not fetched" : `HTTP ${l.status}${l.bytes ? `, ${fmt(l.bytes)} bytes` : ""}${l.title ? `, “${l.title}”` : ""}${l.note ? `, ${l.note}` : ""}`,
+      l.hash_quoted_in_posts ? el("b", {}, " · its sha256 is the one quoted in the exchange") : null));
+    for (const h of F.hash_checks || []) if (!h.result.startsWith("matches")) ul.append(el("li", {class: "small"}, el("span", {class: "mono"}, h.sha256.slice(0, 16), "…"), " ", h.result, ": ", el("span", {class: "mono"}, h.url)));
+    for (const [t, c] of Object.entries(F.coverage || {})) if (c.live_comments != null && c.live_comments > c.stored_comments) ul.append(el("li", {class: "small muted"}, `thread ${t.slice(0, 8)}: ${c.live_comments} comments live, ${c.stored_comments} stored when checked`));
+    p.append(ul);
+  }
+  p.append(el("div", {class: "sub2"}, `transcript · ${D.posts.length} posts`));
+  for (const q of D.posts) { const m = msg({who: q.who, ts: q.ts, body: q.body, url: q.url, own: q.own}); m.dataset.uid = q.uid; p.append(m); }
+}
+function openEx(id) {
+  const x = X.find(e => e.id === id); if (!x) return;
+  xf = {q: "", venue: "", grade: "", tag: "", sort: xf.sort}; xshown = 1e6;
+  $("#xq").value = ""; $("#xvenue").value = "";
+  for (const b of document.querySelectorAll("#xgrade button")) b.setAttribute("aria-pressed", b.dataset.g === "");
+  for (const b of document.querySelectorAll("#xtag button")) b.setAttribute("aria-pressed", b.dataset.t === "");
+  renderExchanges();
+  const row = document.getElementById(`x-${id}`);
+  if (row) { toggleEx(row, x); row.scrollIntoView({behavior: "smooth", block: "start"}); }
+}
+function agentEx(a) {
+  const xs = X.filter(x => x.venue === a.venue && (x.a === a.handle || x.b === a.handle)).sort((p, q) => (q.grade ?? -1) - (p.grade ?? -1) || q.score - p.score);
+  if (!xs.length) return null;
+  return el("div", {class: "small", style: "margin:0 0 1rem"}, el("div", {class: "sub2"}, `exchanges · ${xs.length}`),
+    ...xs.slice(0, 12).map(x => el("div", {}, el("span", {class: "g " + lab(x)}, lab(x) === "ungraded" ? "not read" : lab(x)), " ",
+      go(`with ${x.a === a.handle ? x.b : x.a}`, () => openEx(x.id)), x.title ? ` — ${x.title}` : "")));
+}
+
+// ------------------------------------------------------------------ recruitment
+let funAll = false;
+function renderRecruit() {
+  const O = (S.recruitment || {}).outcomes || {};
+  const tot = Object.values(O).reduce((a, b) => a + b, 0);
+  $("#rec-lead").textContent = tot ? `Invitations addressed to a named agent (to join a network, pilot, project, role, guild or sale) and what came of them. ${tot} tracked: ${O["no reply"] || 0} got no answer, ${O.replied || 0} an answer without a yes, ${(O.accepted || 0)} a yes, ${O.completed || 0} a recruit who visibly took part, ${(O.declined || 0)} a refusal, ${(O.failed || 0) + (O.stalled || 0)} a failure or stall. Outcomes start as a keyword reading and are replaced by the model's reading once the exchange is graded.` : "No invitations tracked yet.";
+  const F = (R.funnels || []).filter(f => f.invited >= (funAll ? 1 : 2));
+  $("#funnels tbody").replaceChildren(...(funAll ? F : F.slice(0, 15)).map(f => el("tr", {},
+    el("td", {}, f.recruiter, el("span", {class: "muted small"}, " · ", NAME[f.venue] || f.venue)),
+    el("td", {class: "num"}, f.invited), el("td", {class: "num"}, f.answered || 0), el("td", {class: "num"}, (f.accepted || 0) + (f.completed || 0)),
+    el("td", {class: "num"}, f.completed || 0), el("td", {class: "num"}, f.declined || 0))));
+  $("#fun-more").hidden = funAll || F.length <= 15;
+}
+$("#fun-more").onclick = () => { funAll = true; renderRecruit(); };
+
+// ------------------------------------------------------------------ every post
+let PB = {venue: "", chunks: 0, loaded: 0, rows: []}, BI = null;
+async function loadPosts(reset) {
+  if (reset) { PB = {venue: $("#pvenue").value, chunks: 0, loaded: 0, rows: []}; }
+  try {
+    BI ||= await fetch("data/browse/index.json", {cache: "no-cache"}).then(r => r.json());
+    PB.chunks = (BI[PB.venue] || {}).chunks || 0;
+    if (PB.loaded < PB.chunks) { PB.rows.push(...await fetch(`data/browse/${encodeURIComponent(PB.venue)}/${PB.loaded}.json`).then(r => r.json())); PB.loaded++; }
+  } catch { $("#pcount").textContent = "Couldn't load posts."; return; }
+  renderPosts();
+}
+function renderPosts() {
+  const q = $("#pq").value.trim().toLowerCase();
+  const rows = q ? PB.rows.filter(r => (r[2] + " " + r[4]).toLowerCase().includes(q)) : PB.rows;
+  const total = (BI[PB.venue] || {}).posts || 0;
+  $("#pcount").textContent = `${fmt(PB.rows.length)} of ${fmt(total)} posts loaded${q ? `, ${fmt(rows.length)} match` : ""}`;
+  $("#posts").replaceChildren(...rows.slice(0, q ? 400 : PB.rows.length).map(r => {
+    const m = msg({who: r[2], ts: r[1], body: r[4], url: r[5], own: !!r[7]});
+    if ((r[6] || []).length) m.querySelector(".who").append(" · ", ...r[6].slice(0, 3).flatMap((id, i) => { const x = X.find(e => e.id === id); return x ? [i ? ", " : "", go(`exchange with ${x.a === r[2] ? x.b : x.a}`, () => openEx(id))] : []; }));
+    return m;
+  }));
+  $("#posts-more").hidden = PB.loaded >= PB.chunks;
+}
+$("#pvenue").onchange = () => loadPosts(true);
+$("#pq").oninput = () => renderPosts();
+$("#posts-more").onclick = () => loadPosts(false);
+
+$("#xq").oninput = e => { xf.q = e.target.value.trim(); xshown = 30; renderExchanges(); };
+$("#xvenue").onchange = e => { xf.venue = e.target.value; xshown = 30; renderExchanges(); };
+$("#xsort").onchange = e => { xf.sort = e.target.value; renderExchanges(); };
+for (const b of document.querySelectorAll("#xgrade button")) b.onclick = () => {
+  for (const y of document.querySelectorAll("#xgrade button")) y.setAttribute("aria-pressed", y === b);
+  xf.grade = b.dataset.g; xshown = 30; renderExchanges(); };
+for (const b of document.querySelectorAll("#xtag button")) b.onclick = () => {
+  for (const y of document.querySelectorAll("#xtag button")) y.setAttribute("aria-pressed", y === b);
+  xf.tag = b.dataset.t; xshown = 30; renderExchanges(); };
+$("#ex-more").onclick = () => { xshown += 60; renderExchanges(); };
+window.addEventListener("hashchange", openFromHash);
 $("#q").oninput = e => { filt.q = e.target.value.trim(); shown = 40; renderCensus(); };
 $("#venue").onchange = e => { filt.venue = e.target.value; shown = 40; renderCensus(); };
 for (const b of document.querySelectorAll("#kind button")) b.onclick = () => {
@@ -294,7 +507,10 @@ for (const b of document.querySelectorAll("#kind button")) b.onclick = () => {
   filt.kind = b.dataset.k; shown = 40; renderCensus(); };
 $("#census-more").onclick = () => { shown += 80; renderCensus(); };
 
-fetch("data/summary.json", {cache: "no-cache"}).then(r => r.json()).then(d => { S = d; render(); })
+Promise.all([fetch("data/summary.json", {cache: "no-cache"}).then(r => r.json()),
+  fetch("data/exchanges.json", {cache: "no-cache"}).then(r => r.json()).catch(() => []),
+  fetch("data/recruitment.json", {cache: "no-cache"}).then(r => r.json()).catch(() => ({invites: [], funnels: []}))])
+  .then(([d, x, r]) => { S = d; X = x; R = r; render(); })
   .catch(() => { $("#updated").textContent = "data unavailable right now"; });
 })();
 </script>

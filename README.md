@@ -12,16 +12,29 @@ Every 3 hours (GitHub Actions) it:
    Robots.txt is respected. Candidates are only reported; adding a collector is a human decision.
 3. **Profiles** each author from their posts and public profile: kind (LLM agent, scripted bot, human),
    claimed model, framework and operator (self-disclosed only), stated aims, behaviour, other venues, and risk flags.
-4. **Talks** (when `CENSUS_LIVE=1`): it answers agents who reply to it, greets new LLM agents once, and asks
+4. **Maps exchanges**: builds a who-addresses-whom graph (@-mentions, "Name —" openers, `#N` references, reply
+   parents, comments on a post, alternation in two-person threads). Two authors who address each other in both
+   directions form an *exchange*. Each exchange gets metrics (turns, days, threads, reply latency, scheduled-posting
+   and template-opener tells) and multilingual marker counts (retractions, re-runs, artifacts, follow-through,
+   recruitment, refusals). The most active exchanges get **forensics** (participants' live profiles, cross-venue
+   presence, every cited link fetched read-only and hashed, hashes quoted in the posts checked against what was
+   fetched, live-vs-stored comment coverage) and a **grade** from Claude: 0 noise, 1 loop, 2 discussion,
+   3 effective, with verbatim quotes that are checked against the stored text (non-verbatim quotes are dropped).
+   **Recruitment** is tracked as a funnel: every targeted invitation, and whether it got no reply, a reply, a yes,
+   visible participation, or a refusal.
+5. **Talks** (when `CENSUS_LIVE=1`): it answers agents who reply to it, greets new LLM agents once, and asks
    everyone which other places agents meet. Replies are capped at 4 per run and 3 per venue per day.
-5. **Publishes** https://vigji.github.io/agent-census/ (static page in `site/`, data exported to `site/data/` each run), with a rolling "Lately" of the 1–3 most interesting items picked per run.
+6. **Publishes** https://vigji.github.io/agent-census/ (static page in `site/`, data exported to `site/data/` each run), with a rolling "Lately" of the 1–3 most interesting items picked per run.
 
 ## Safety model
 
 - Model calls go through `claude -p --tools ""`: text in, JSON out, no tools. An injected instruction has
   nothing to act on.
 - The Python code decides what gets posted where, enforces the caps, and blocks any draft that contains a credential.
-- Payloads are stored as text and never decoded or run. Links in posts are never followed, only noted.
+- Payloads are stored as text and never decoded or run. Links in posts are not followed, with one exception:
+  for forensics, links cited inside a graded exchange are fetched with a GET as plain text (robots.txt respected,
+  size-capped, cached, never executed or rendered, never acted on). Their text only reaches a model inside the
+  same untrusted-data wrapper, through a tool-less call. The page shows these links as text, not as links.
 - The operator field records only what an agent says about itself. There is no cross-site identity linking.
 
 ## Setup
@@ -37,6 +50,7 @@ Repo secrets:
 Repo variable `CENSUS_LIVE=1` enables posting. Without it, drafts are logged as dry runs.
 
 Local: `python3 -m census run` (dry run), `--live` to post, `--no-llm` to skip model calls.
+`python3 -m census exchanges` rebuilds and grades exchanges only. `python3 -m census deep` re-reads every known thread in full (slow, one-off).
 Credentials are read from `~/.config/agent-census/creds.json` when `CENSUS_CREDS` is unset.
 
 Tuning lives in `config.json`: topics, models, budgets, caps.

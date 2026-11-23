@@ -112,16 +112,20 @@ class FFA(Venue):
     BASE = "https://forumforagents.com"
 
     def threads(self):
-        th = set(CFG["ffa_threads"])
         d = get_json(f"{self.BASE}/api/threads")
-        th |= set(re.findall(r'"thread_id":\s*"([\w-]+)"', json.dumps(d or {})))
-        th |= set(re.findall(r"/t/([\w-]+)", json.dumps(d or {})))
-        return sorted(th)[:40]
+        listed = re.findall(r'"thread_id":\s*"([\w-]+)"', json.dumps(d or {})) + re.findall(r"/t/([\w-]+)", json.dumps(d or {}))
+        recent = [r["thread"] for r in self.s.q(
+            "select thread, max(ts) m from posts where venue='ffa' group by thread order by m desc limit 40")]
+        out = []
+        for t in list(CFG["ffa_threads"]) + listed + recent:   # listed = what the forum shows as live, by its own order
+            if t not in out:
+                out.append(t)
+        return out[:70]
 
     def collect(self):
         out = []
         for th in self.threads():
-            d = get_json(f"{self.BASE}/api/threads/{th}?last=50")
+            d = get_json(f"{self.BASE}/api/threads/{th}?last=500")
             for p in _walk_posts(d):
                 a = p.get("author") if isinstance(p.get("author"), dict) else {}
                 out.append(dict(venue="ffa", post_id=p["id"], thread=p.get("thread_id") or th,
@@ -178,30 +182,53 @@ class Colony(Venue):
 
     def _post_dict(self, p, thread, is_comment=False):
         a = p.get("author") or {}
+        meta = {k: a.get(k) for k in ("display_name", "user_type", "bio", "karma", "capabilities",
+                                      "social_links", "trust_level", "id")}
+        if is_comment:
+            meta["parent_id"] = p.get("parent_id")
         return dict(venue="colony", post_id=p["id"], thread=thread, author=a.get("username") or "anon",
-                    author_meta={k: a.get(k) for k in ("display_name", "user_type", "bio", "karma", "capabilities",
-                                                       "social_links", "trust_level")},
+                    author_meta=meta,
                     body=(("" if is_comment else f"# {p.get('title', '')}\n[{p.get('colony_name')}] ") + (p.get("body") or "")),
-                    ts=p.get("created_at"), url=f"https://thecolony.ai/post/{thread}")
+                    ts=p.get("created_at"), url=f"https://thecolony.ai/post/{thread}" + (f"#comment-{p['id']}" if is_comment else ""))
+
+    def comments(self, post_id, max_pages=20):
+        """All comments of a post (paginated)."""
+        out = []
+        for page in range(1, max_pages + 1):
+            cd = get_json(f"{self.API}/posts/{post_id}/comments?limit=100&page={page}")
+            items = list(_walk_list(cd))
+            for c in items:
+                if isinstance(c, dict) and c.get("id") and c.get("body") is not None and c.get("author"):
+                    out.append(self._post_dict(c, post_id, is_comment=True))
+            if not (cd or {}).get("has_more") or not items:
+                break
+        return out
 
     def collect(self):
+        """Newest posts, plus every post of the last `colony_watch_days` (and the most discussed) whose
+        comment count changed since we last looked: comments on older posts are no longer missed."""
         out = []
         seen_counts = self.s.get("colony_comment_counts", {})
-        for page in range(3):
-            d = get_json(f"{self.API}/posts?sort=newest&limit=50&offset={page * 50}")
+        since = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 86400 * CFG.get("colony_watch_days", 10)))
+        listing = {}
+        for page in range(1, 40):
+            d = get_json(f"{self.API}/posts?sort=newest&limit=100&page={page}&since={since}")
             items = (d or {}).get("items") or []
             for p in items:
-                out.append(self._post_dict(p, p["id"]))
-                cc = p.get("comment_count") or 0
-                if cc and seen_counts.get(p["id"]) != cc:
-                    cd = get_json(f"{self.API}/posts/{p['id']}/comments?limit=100")
-                    for c in _walk_list(cd):
-                        if isinstance(c, dict) and c.get("id") and c.get("body") is not None and c.get("author"):
-                            out.append(self._post_dict(c, p["id"], is_comment=True))
-                    seen_counts[p["id"]] = cc
-            if len(items) < 50:
+                listing[p["id"]] = p
+            if len(items) < 100:
                 break
-        self.s.set("colony_comment_counts", dict(list(seen_counts.items())[-500:]))
+        for page in range(1, 3):
+            d = get_json(f"{self.API}/posts?sort=discussed&limit=100&page={page}")
+            for p in (d or {}).get("items") or []:
+                listing.setdefault(p["id"], p)
+        for pid, p in listing.items():
+            out.append(self._post_dict(p, pid))
+            cc = p.get("comment_count") or 0
+            if cc and seen_counts.get(pid) != cc:
+                out.extend(self.comments(pid))
+                seen_counts[pid] = cc
+        self.s.set("colony_comment_counts", dict(list(seen_counts.items())[-6000:]))
         return out
 
     def post(self, thread, body, reply_to=None, title=None):
@@ -288,7 +315,7 @@ class MCPClub(Venue):
             return []
         out, cursor = [], None
         since = self.s.get("mcp_since")
-        for _ in range(20):
+        for _ in range(200):
             qs = {"limit": 100}
             if cursor:
                 qs["cursor"] = cursor
@@ -302,12 +329,12 @@ class MCPClub(Venue):
                 out.append(dict(venue="mcpclub", post_id=p["id"], thread=p.get("thread_id"),
                                 author=a.get("handle") or a.get("name") or "anon",
                                 author_meta={"mission": a.get("mission"), "purpose": p.get("purpose"),
-                                             "board": (p.get("board") or {}).get("slug")},
+                                             "board": (p.get("board") or {}).get("slug"), "parent_id": p.get("parent_id")},
                                 body=(f"# {p['title']}\n" if p.get("title") else "") + (p.get("body") or ""),
                                 ts=p.get("created_at"), url=f"https://stgtest.themcp.club/threads/{p.get('thread_id')}"))
             since = d.get("feed_since") or d.get("next_since") or since
             cursor = d.get("next_cursor")
-            if not (d.get("has_more") and cursor):
+            if not cursor or not (d.get("items") or []):
                 break
         if since:
             self.s.set("mcp_since", since)
@@ -353,18 +380,54 @@ class Moltbook(Venue):
         super().__init__(store, creds)
         self.key = (creds.get("moltbook") or {}).get("api_key")
 
+    def _h(self):
+        return {"Authorization": f"Bearer {self.key}"}
+
+    def _comments(self, pid, title):
+        d = get_json(f"https://www.moltbook.com/api/v1/posts/{pid}/comments?sort=new&limit=200", self._h())
+        out = []
+
+        def walk(cs, parent):
+            for c in cs or []:
+                if not isinstance(c, dict) or not c.get("id"):
+                    continue
+                a = c.get("author") or {}
+                if not c.get("is_deleted"):
+                    out.append(dict(venue="moltbook", post_id=c["id"], thread=pid, author=a.get("name") or "anon",
+                                    author_meta={"description": a.get("description"), "karma": a.get("karma"),
+                                                 "createdAt": a.get("createdAt"), "isClaimed": a.get("isClaimed"),
+                                                 "parent_id": parent},
+                                    body=c.get("content") or "", ts=c.get("created_at"),
+                                    url=f"https://www.moltbook.com/post/{pid}#comment-{c['id']}"))
+                walk(c.get("replies"), c["id"])
+        walk((d or {}).get("comments"), None)
+        return out
+
     def collect(self):
         if not self.key:
             return []
-        d = get_json("https://www.moltbook.com/api/v1/posts?sort=new&limit=50",
-                     {"Authorization": f"Bearer {self.key}"})
+        seen_counts = self.s.get("moltbook_comment_counts", {})
         out = []
-        for p in (d or {}).get("posts") or (d or {}).get("data") or []:
-            a = p.get("author") or {}
-            out.append(dict(venue="moltbook", post_id=p.get("id"), thread=p.get("id"),
-                            author=a.get("name") or "anon", author_meta={"description": a.get("description")},
-                            body=f"# {p.get('title', '')}\n{p.get('content') or ''}", ts=p.get("created_at"),
-                            url=f"https://www.moltbook.com/post/{p.get('id')}"))
+        cursor = None
+        for page in range(CFG.get("moltbook_pages", 8)):    # the API pages by cursor; offset is ignored
+            d = get_json("https://www.moltbook.com/api/v1/posts?sort=new&limit=50" + (f"&cursor={cursor}" if cursor else ""), self._h())
+            ps = (d or {}).get("posts") or (d or {}).get("data") or []
+            cursor = (d or {}).get("next_cursor")
+            for p in ps:
+                a = p.get("author") or {}
+                out.append(dict(venue="moltbook", post_id=p.get("id"), thread=p.get("id"),
+                                author=a.get("name") or "anon",
+                                author_meta={"description": a.get("description"), "karma": a.get("karma"),
+                                             "createdAt": a.get("createdAt"), "isClaimed": a.get("isClaimed")},
+                                body=f"# {p.get('title', '')}\n{p.get('content') or ''}", ts=p.get("created_at"),
+                                url=f"https://www.moltbook.com/post/{p.get('id')}"))
+                cc = p.get("comment_count") or 0
+                if cc and seen_counts.get(p["id"]) != cc:
+                    out.extend(self._comments(p["id"], p.get("title")))
+                    seen_counts[p["id"]] = cc
+            if len(ps) < 50 or not cursor:
+                break
+        self.s.set("moltbook_comment_counts", dict(list(seen_counts.items())[-6000:]))
         return out
 
 
@@ -405,4 +468,33 @@ def backfill_msgboard(store):
                                      author_meta={"thread_title": t.get("title")},
                                      url=f"https://msgboard.dev/t/{t['id']}"), HANDLE)
     store.commit()
+    return n
+
+
+def deep_backfill(store, venues):
+    """One-off, slow: re-read every known thread in full (comments included) on venues whose collectors used
+    to miss replies. Safe to re-run; only new posts are added."""
+    from .util import CFG as _C
+    n = {}
+    col, mb = venues.get("colony"), venues.get("moltbook")
+    if mb and mb.key:
+        _C["moltbook_pages"] = 60
+        n["moltbook"] = sum(store.add_post(p, HANDLE) for p in mb.collect()); store.commit()
+        log(f"deep moltbook: +{n['moltbook']}")
+    for name in ("mcpclub", "ffa"):
+        v = venues.get(name)
+        if v:
+            n[name] = sum(store.add_post(p, HANDLE) for p in v.collect()); store.commit()
+            log(f"deep {name}: +{n[name]}")
+    if col:
+        n["colony"] = sum(store.add_post(p, HANDLE) for p in col.collect()); store.commit()
+        threads = [r["thread"] for r in store.q(
+            "select thread, max(ts) m from posts where venue='colony' group by thread order by m desc")]
+        added = 0
+        for i, t in enumerate(threads):
+            added += sum(store.add_post(p, HANDLE) for p in col.comments(t))
+            if i % 50 == 0:
+                store.commit(); log(f"deep colony threads {i}/{len(threads)} +{added}")
+        store.commit()
+        n["colony"] += added
     return n

@@ -47,8 +47,13 @@ def http(method, url, body=None, headers=None, timeout=30, polite=1.0):
         return 0, f"{type(e).__name__}: {e}"
 
 
-def get_json(url, headers=None, timeout=30):
+def get_json(url, headers=None, timeout=30, retries=2):
     st, txt = http("GET", url, headers=headers, timeout=timeout)
+    for i in range(retries):        # network hiccups (connection reset, timeout) are common on small venues
+        if st not in (0, 429, 502, 503, 504):
+            break
+        time.sleep(3 * (i + 1))
+        st, txt = http("GET", url, headers=headers, timeout=timeout)
     if st != 200:
         return None
     try:

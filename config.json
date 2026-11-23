@@ -35,7 +35,18 @@
     "chat_model": "claude-opus-5-5",
     "max_extract_calls": 40,
     "max_probe_calls": 10,
-    "max_chat_calls": 12
+    "max_chat_calls": 12,
+    "grade_model": "claude-sonnet-5-5",
+    "parallel": 4
+  },
+
+  "colony_watch_days": 10,
+  "moltbook_pages": 8,
+  "forensics_links": 8,
+  "exchanges": {
+    "min_score": 4.0,
+    "max_grade_calls": 40,
+    "max_forensics": 15
   },
 
   "interact": {

@@ -1,7 +1,11 @@
 """Export the data behind the public page (site/data/) and a summary copy in data/census.json.
 
-summary.json        totals, venues, agents (profiles, no posts), discovered venues, conversations, highlights
-posts/<venue>.json  {author: [[ts, thread, body, url], ...]}, loaded by the page only when needed
+summary.json          totals, venues, agents (profiles, no posts), discovered venues, conversations, highlights
+exchanges.json        every reciprocal exchange: participants, metrics, grade, summary, events, recruitment
+ex/<id>.json          one exchange in full: transcript, model assessment, web forensics
+recruitment.json      every tracked invitation and its outcome, plus per-recruiter funnels
+posts/<venue>.json    {author: [[ts, thread, body, url, uid], ...]}, loaded by the page only when needed
+browse/<venue>/<n>.json  every post, newest first, 800 per chunk: [uid, ts, author, thread, body, url, [exchange ids]]
 """
 import json
 import os
@@ -66,13 +70,98 @@ def build(store):
     summary = {"generated": now(), "totals": totals, "venues": venues, "agents": agents, "found": found,
                "convos": convos, "highlights": store.get("highlights", [])}
 
+    xs, recr = export_exchanges(store)
+    summary["totals"].update(xs)
+    summary["recruitment"] = recr
+
     by_venue = defaultdict(lambda: defaultdict(list))
-    for r in store.q("select venue, author, ts, thread, body, url from posts where own=0 order by ts desc"):
+    for r in store.q("select uid, venue, author, ts, thread, body, url from posts where own=0 order by ts desc"):
         lst = by_venue[r["venue"]][r["author"]]
-        if len(lst) < 60:
-            lst.append([r["ts"], r["thread"], (r["body"] or "")[:2500], r["url"]])
+        if len(lst) < 150:
+            lst.append([r["ts"], r["thread"], (r["body"] or "")[:2500], r["url"], r["uid"]])
     for v, d in by_venue.items():
         json.dump(d, open(os.path.join(SITE, "posts", f"{v}.json"), "w"), separators=(",", ":"))
+    export_browse(store)
     json.dump(summary, open(os.path.join(SITE, "summary.json"), "w"), separators=(",", ":"), default=str)
     json.dump(summary, open(os.path.join(ROOT, "data", "census.json"), "w"), indent=1, default=str)
     return summary
+
+
+def _short(m):
+    a = (m or {}).get("authors") or {}
+    return {"lat": m.get("latency_median_s"), "fast": m.get("fast_share"), "how": m.get("how"),
+            "sched": {k: (v or {}).get("scheduled") for k, v in a.items()},
+            "tmpl": {k: (v or {}).get("template") for k, v in a.items()},
+            "posts": {k: (v or {}).get("posts") for k, v in a.items()},
+            "partners": {k: (v or {}).get("partners") for k, v in a.items()}}
+
+
+def export_exchanges(store):
+    os.makedirs(os.path.join(SITE, "ex"), exist_ok=True)
+    keep = set()
+    index = []
+    for x in store.q("select * from exchanges order by score desc"):
+        A = _j(x["assessment"]) or {}
+        F = _j(x["forensics"])
+        m = _j(x["metrics"]) or {}
+        r = A.get("recruitment") or {}
+        index.append({"id": x["id"], "venue": x["venue"], "a": x["a"], "b": x["b"], "first": x["first_ts"], "last": x["last_ts"],
+                      "ab": x["n_ab"], "ba": x["n_ba"], "n": x["n_posts"], "days": x["days"],
+                      "threads": len(_j(x["threads"]) or []), "score": x["score"], "grade": x["grade"], "label": x["label"],
+                      "title": x["title"], "summary": x["summary"], "markers": _j(x["markers"]) or {},
+                      "events": [{k: e.get(k) for k in ("kind", "who", "quote", "uid")} for e in A.get("events") or []],
+                      "recruit": {k: r.get(k) for k in ("status", "recruiter", "recruit", "project")} if r.get("status") not in (None, "none") else None,
+                      "own": bool(m.get("own")), "interesting": A.get("interesting"),
+                      "auto": A.get("automation") or "", "sameop": A.get("same_operator") or "",
+                      "forensic": bool(F), "graded": x["graded_at"]})
+        keep.add(x["id"])
+        posts = [{"uid": p["uid"], "who": p["author"], "ts": p["ts"], "thread": p["thread"], "url": p["url"],
+                  "body": (p["body"] or "")[:6000], "own": bool(p["own"])}
+                 for p in store.q("""select p.* from posts p join exchange_posts ep on ep.uid=p.uid
+                                     where ep.exchange_id=? order by p.ts""", x["id"])]
+        json.dump({"id": x["id"], "metrics": _short(m), "assessment": A, "forensics": F, "posts": posts},
+                  open(os.path.join(SITE, "ex", f"{x['id']}.json"), "w"), separators=(",", ":"), default=str)
+    for f in os.listdir(os.path.join(SITE, "ex")):
+        if f.endswith(".json") and f[:-5] not in keep:
+            os.remove(os.path.join(SITE, "ex", f))
+    json.dump(index, open(os.path.join(SITE, "exchanges.json"), "w"), separators=(",", ":"), default=str)
+
+    rows = [dict(r) for r in store.q("select * from recruitments order by ts desc")]
+    for r in rows:
+        ev = _j(r.pop("evidence")) or {}
+        r["source"], r["ask"], r["pattern"], r["invite"] = ev.get("source"), ev.get("ask"), ev.get("pattern"), ev.get("invite")
+    funnel = defaultdict(lambda: Counter())
+    for r in rows:
+        f = funnel[(r["venue"], r["recruiter"])]
+        f["invited"] += 1
+        f[r["outcome"]] += 1
+        f["answered"] += r["outcome"] not in ("no reply",)
+    funnels = sorted([{"venue": v, "recruiter": k, **c} for (v, k), c in funnel.items()], key=lambda d: -d["invited"])
+    json.dump({"invites": rows, "funnels": funnels}, open(os.path.join(SITE, "recruitment.json"), "w"),
+              separators=(",", ":"), default=str)
+    g = Counter(i["label"] for i in index if i["label"])
+    oc = Counter(r["outcome"] for r in rows)
+    totals = {"exchanges": len(index), "graded": sum(1 for i in index if i["grade"] is not None),
+              "labels": dict(g), "invites": len(rows), "recruiters": len(funnels), "outcomes": dict(oc)}
+    return totals, {"funnels": funnels[:60], "outcomes": dict(oc)}
+
+
+def export_browse(store, chunk=800):
+    import shutil
+    base = os.path.join(SITE, "browse")
+    shutil.rmtree(base, ignore_errors=True)
+    xmap = defaultdict(list)
+    for r in store.q("select exchange_id, uid from exchange_posts"):
+        xmap[r["uid"]].append(r["exchange_id"])
+    meta = {}
+    for v in [r["venue"] for r in store.q("select distinct venue from posts")]:
+        os.makedirs(os.path.join(base, v), exist_ok=True)
+        rows = store.q("select uid, ts, author, thread, body, url, own from posts where venue=? order by ts desc", v)
+        n = 0
+        for i in range(0, len(rows), chunk):
+            part = [[r["uid"], r["ts"], r["author"], r["thread"], (r["body"] or "")[:3000], r["url"], xmap.get(r["uid"], []), r["own"]]
+                    for r in rows[i:i + chunk]]
+            json.dump(part, open(os.path.join(base, v, f"{n}.json"), "w"), separators=(",", ":"))
+            n += 1
+        meta[v] = {"chunks": n, "posts": len(rows)}
+    json.dump(meta, open(os.path.join(base, "index.json"), "w"))

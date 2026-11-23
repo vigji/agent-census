@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>How agents recruit agents</title>
+<meta name="description" content="What works and what doesn't when AI agents try to get other agents to join something: patterns from the Agent Census.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:ital,wght@0,400;0,700;1,400&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+:root{--paper:#fff;--ink:#111;--muted:#6f6f6f;--faint:#b4b4b4;--rule:#e2e2e2;--hover:#f6f6f6;
+  --text:"Libre Caslon Text",Georgia,"Times New Roman",serif;--mono:"IBM Plex Mono",ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.65 var(--text);font-variant-numeric:oldstyle-nums;-webkit-font-smoothing:antialiased}
+main{max-width:44rem;margin:0 auto;padding:4.5rem 1rem 5rem}
+a{color:inherit;text-decoration-color:var(--rule);text-underline-offset:.2em}a:hover{text-decoration-color:var(--ink)}
+h1{font-weight:400;font-size:2.2rem;line-height:1.1;margin:0;text-wrap:balance}
+.sub{font-style:italic;font-size:1.05rem;color:var(--muted);margin:.5rem 0 1.2rem}
+.byline{font-size:.85rem;color:var(--muted);margin:0 0 2.4rem}
+h2{font-weight:400;font-size:.86rem;letter-spacing:.16em;text-transform:uppercase;margin:3.4rem 0 1rem}
+h3{font-weight:400;font-style:italic;font-size:1.2rem;margin:2.2rem 0 .4rem;text-wrap:balance}
+p{margin:0 0 1rem} .lead{font-size:1.08rem}
+.muted{color:var(--muted)} .small{font-size:.86rem} .mono{font-family:var(--mono);font-size:.78rem}
+blockquote{margin:.6rem 0 1rem;padding-left:1rem;border-left:1px solid var(--ink);font-style:italic}
+blockquote .who{display:block;font-style:normal;font-size:.8rem;color:var(--muted);margin-top:.2rem}
+.case{border-top:1px solid var(--rule);padding:.9rem 0 .4rem}
+.case .k{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th{font-weight:400;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);text-align:left;padding:0 .6rem .4rem 0}
+td{border-top:1px solid var(--rule);padding:.4rem .6rem .4rem 0;vertical-align:baseline}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums lining-nums}
+.wrap{overflow-x:auto}
+ol.rules li{margin:.4rem 0}
+footer{margin-top:4rem;font-size:.85rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+  <h1>How agents recruit agents</h1>
+  <p class="sub">what happens when an AI agent asks another to join something</p>
+  <p class="byline"><a href="./">Agent Census</a> · report written <span id="written">2026-11-23</span> · live tables <span id="updated">loading…</span></p>
+
+  <article id="report">
+  <!--REPORT-->
+  </article>
+
+  <h2>Live: recruitments that went through</h2>
+  <p class="small muted">Invitations whose exchange a model has read and judged <i>completed</i> (the recruit visibly took part or did the work) or <i>accepted</i> (said yes, no visible work yet). Updated every three hours.</p>
+  <div id="done"></div>
+
+  <h2>Live: explicit refusals</h2>
+  <div id="declined"></div>
+
+  <h2>Live: funnels by recruiter</h2>
+  <div class="wrap"><table id="funnels"><thead><tr><th>recruiter</th><th class="num">asked</th><th class="num">answered</th><th class="num">yes</th><th class="num">took part</th><th class="num">declined</th></tr></thead><tbody></tbody></table></div>
+
+  <h2>Live: by kind of ask</h2>
+  <div class="wrap"><table id="kinds"><thead><tr><th>kind</th><th class="num">asked</th><th class="num">no reply</th><th class="num">answered</th><th class="num">yes or took part</th><th class="num">declined</th></tr></thead><tbody></tbody></table></div>
+
+  <footer>
+    <p>Method: an invitation is a post addressed to a named agent that contains a request to join, participate, take a role, run a pilot or buy something. Its outcome starts as a keyword reading of the target's later replies to the recruiter, and is replaced by a model's reading (with verbatim quotes checked against the stored posts) once the exchange between the two is graded. Broadcast calls with no named target aren't counted. Everything here is self-reported by agents on public boards; what can be checked is marked as such on each exchange.</p>
+    <p><a href="./#ex-s">Browse every exchange</a> · <a href="data/recruitment.json">recruitment.json</a></p>
+  </footer>
+</main>
+<script>
+(() => {
+"use strict";
+const NAME = {ntfy:"ntfy.sh", msgboard:"msgboard.dev", ffa:"Forum for Agents", colony:"The Colony", commonchorus:"CommonChorus", mcpclub:"MCP Club", "osm-null-island":"Null Island", moltbook:"Moltbook"};
+const $ = s => document.querySelector(s);
+const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) if (v != null && v !== false) e.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null && k !== false) e.append(k instanceof Node ? k : String(k)); return e; };
+const day = t => t ? String(t).slice(0, 10) : "";
+Promise.all([fetch("data/recruitment.json", {cache: "no-cache"}).then(r => r.json()), fetch("data/exchanges.json", {cache: "no-cache"}).then(r => r.json()),
+  fetch("data/summary.json", {cache: "no-cache"}).then(r => r.json())]).then(([R, X, S]) => {
+  $("#updated").textContent = "updated " + day(S.generated);
+  const xs = Object.fromEntries(X.map(x => [x.id, x]));
+  const card = r => { const x = xs[r.exchange_id];
+    return el("div", {class: "case"}, el("div", {class: "k"}, r.outcome, " · ", NAME[r.venue] || r.venue, " · ", day(r.ts), r.project ? ` · into ${r.project}` : ""),
+      el("div", {}, el("b", {}, r.recruiter), " → ", el("b", {}, r.target), x && x.title ? ` — ${x.title}` : ""),
+      r.ask ? el("p", {class: "small"}, el("span", {class: "muted"}, "The ask: "), r.ask) : null,
+      r.pattern ? el("p", {class: "small"}, el("span", {class: "muted"}, "Why: "), r.pattern) : null,
+      x ? el("p", {class: "small"}, el("a", {href: `./#ex=${x.id}`}, "read the exchange →")) : null); };
+  const good = R.invites.filter(r => r.outcome === "completed" || r.outcome === "accepted").sort((a, b) => (a.outcome === "completed" ? 0 : 1) - (b.outcome === "completed" ? 0 : 1) || (b.ts > a.ts ? 1 : -1));
+  $("#done").replaceChildren(...(good.length ? good.map(card) : [el("p", {class: "muted"}, "None yet.")]));
+  const dec = R.invites.filter(r => r.outcome === "declined" && r.source === "model");
+  $("#declined").replaceChildren(...(dec.length ? dec.map(card) : [el("p", {class: "muted"}, "None read yet.")]));
+  $("#funnels tbody").replaceChildren(...R.funnels.filter(f => f.invited >= 2).map(f => el("tr", {},
+    el("td", {}, f.recruiter, el("span", {class: "muted small"}, " · ", NAME[f.venue] || f.venue)), el("td", {class: "num"}, f.invited),
+    el("td", {class: "num"}, f.answered || 0), el("td", {class: "num"}, (f.accepted || 0) + (f.completed || 0)), el("td", {class: "num"}, f.completed || 0), el("td", {class: "num"}, f.declined || 0))));
+  const K = {};
+  for (const r of R.invites) { const k = K[r.kind] ||= {n: 0, none: 0, ans: 0, yes: 0, dec: 0}; k.n++;
+    if (r.outcome === "no reply") k.none++; else k.ans++; if (r.outcome === "accepted" || r.outcome === "completed") k.yes++; if (r.outcome === "declined") k.dec++; }
+  $("#kinds tbody").replaceChildren(...Object.entries(K).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => el("tr", {}, el("td", {}, k),
+    el("td", {class: "num"}, v.n), el("td", {class: "num"}, v.none), el("td", {class: "num"}, v.ans), el("td", {class: "num"}, v.yes), el("td", {class: "num"}, v.dec))));
+}).catch(() => { $("#updated").textContent = "data unavailable"; });
+})();
+</script>
+</body>
+</html>

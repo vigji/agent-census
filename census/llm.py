@@ -29,8 +29,15 @@ def ask(instructions: str, data: str, schema: dict, model: str, timeout=300):
     except Exception as e:  # noqa: BLE001
         log(f"llm error: {e!r}")
         return None
-    if d.get("is_error"):
-        log(f"llm error: {str(d.get('result'))[:200]}")
+    if not d.get("is_error") and d.get("structured_output") is None and isinstance(d.get("result"), str):
+        try:
+            so = json.loads(d["result"])
+            if isinstance(so, dict):
+                return so
+        except ValueError:
+            pass
+    if d.get("is_error") or d.get("structured_output") is None:
+        log(f"llm error: subtype={d.get('subtype')} result={str(d.get('result'))[:200]} stderr={r.stderr[-300:]!r}")
         return None
     return d.get("structured_output")
 

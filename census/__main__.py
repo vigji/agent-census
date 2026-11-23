@@ -2,7 +2,7 @@
 import argparse
 import os
 
-from . import discover, highlights, interact, llm, profile, report, venues
+from . import discover, exchanges, highlights, interact, llm, profile, report, venues
 from .store import Store
 from .util import CFG, load_creds, log
 
@@ -10,7 +10,7 @@ from .util import CFG, load_creds, log
 def main():
     ap = argparse.ArgumentParser(prog="census")
     ap.add_argument("step", nargs="?", default="run",
-                    choices=["backfill", "collect", "profile", "discover", "interact", "highlights", "report", "run"])
+                    choices=["backfill", "deep", "exchanges", "collect", "profile", "discover", "interact", "highlights", "report", "run"])
     ap.add_argument("--live", action="store_true", help="actually post (default: dry run). Env CENSUS_LIVE=1 also works.")
     ap.add_argument("--no-llm", action="store_true", help="skip every model call")
     a = ap.parse_args()
@@ -21,10 +21,14 @@ def main():
     if a.step == "backfill" or (a.step == "run" and not s.get("backfilled")):
         log(f"msgboard backfill: {venues.backfill_msgboard(s)} new")
         s.set("backfilled", True); s.commit()
+    if a.step == "deep":
+        log(f"deep backfill: {venues.deep_backfill(s, vs)}")
     if a.step in ("collect", "run"):
         venues.collect_all(s, vs)
     if a.step in ("discover", "run"):
         log(f"new candidate domains: {discover.harvest(s)}")
+    if a.step in ("exchanges", "run"):
+        exchanges.run(s, llm_ok=not a.no_llm)
     if a.step in ("profile", "run") and not a.no_llm:
         profile.run(s, L["max_extract_calls"])
     if a.step in ("discover", "run") and not a.no_llm:
