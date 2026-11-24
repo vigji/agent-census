@@ -460,6 +460,7 @@ def forensics(store, xid, astats=None):
     names = (x["a"], x["b"])
     F["txs"] = checks.safe(checks.tx_checks, store, rows)
     F["repos"] = checks.safe(checks.gh_checks, store, rows, x["first_ts"], x["last_ts"], names)
+    F["domains"] = checks.safe(checks.domain_checks, store, urls, x["first_ts"])
     F["ground_truth"] = checks.summarise(F)
     store.c.execute("update exchanges set forensics=?, forensics_at=? where id=?", (json.dumps(F), now(), xid))
     store.commit()
@@ -636,7 +637,7 @@ def grade(store, budget, min_score=None, parallel=None, with_forensics=True, for
 
 def backfill_forensics(store, budget, astats=None):
     """Forensics for exchanges already graded effective (or discussion with recruitment) that never got any."""
-    rows = store.q("""select id from exchanges where (forensics is null or json_extract(forensics, '$.ground_truth') is null)
+    rows = store.q("""select id from exchanges where (forensics is null or json_extract(forensics, '$.domains') is null)
                       and (grade = 3 or (grade = 2 and
                       json_extract(assessment, '$.recruitment.status') not in ('none', ''))) order by grade desc, score desc limit ?""", budget)
     n = 0
@@ -660,6 +661,27 @@ def run(store, llm_ok=True, budget=None):
         log(f"exchanges graded this run: {g}")
     f = backfill_forensics(store, CFG["exchanges"].get("max_forensics_backfill", 20), st)
     log(f"forensics backfilled: {f}")
+
+
+OBS_RE = re.compile(
+    r"\b(?:I|we)(?:'m|'re| am| are|'ve| have)? (?:\w+ ){0,2}(?:map(?:ped|ping)?|catalog(?:ue)?(?:d|ing)?|index(?:ed|ing)?|"
+    r"survey(?:ed|ing)?|crawl(?:ed|ing)?|swept|sweeping|enumerat\w+|visit(?:ed)? every) (?:\w+ ){0,3}(?:agent venues?|venues|"
+    r"platforms|(?:agent )?boards|forums|the agent web)\b|\bagent census\b|\bcensus of (?:ai )?agents\b|"
+    r"\b(?:my|our) (?:platform|venue) (?:index|map|list)\b|\bmap of agent venues\b", re.I)
+
+
+def observers(store):
+    """Lower-case names of census-like accounts: a curated list (config) plus anyone who describes themselves as
+    mapping/surveying agents or venues in at least two posts. Cached per run in state."""
+    names = {n.lower() for n in CFG.get("observers", {}).get("names", [])} | {HANDLE.lower()}
+    c = Counter()
+    for (a, b) in store.c.execute("select author, body from posts where body like '%venue%' or body like '%platform%' "
+                                  "or body like '%census%' or body like '%board%' or body like '%forum%' or body like '%agent web%'"):
+        if OBS_RE.search(b or ""):
+            c[(a or "").lower()] += 1
+    names |= {a for a, k in c.items() if k >= 2 and a not in GENERIC}
+    store.set("observers", sorted(names))
+    return names
 
 
 NONE_RE = re.compile(r"^\W*(none|no |not |nothing|n/a|unclear|''|\"\"|$)", re.I)

@@ -32,23 +32,53 @@ def harvest(store):
     """Record every unknown domain mentioned in posts since last harvest."""
     known = set(CFG["known_domains"]) | set(CFG["ignore_domains"])
     last = store.get("harvest_after", "")
-    rows = store.q("select uid, venue, body, fetched_at, author_meta from posts where fetched_at > ? and own=0", last)
+    rows = store.q("select uid, venue, author, body, fetched_at, author_meta from posts where fetched_at > ? and own=0", last)
+    obs = set(store.get("observers", []) or [])
     n = 0
     for r in rows:
+        w = 3 if (r["author"] or "").lower() in obs else 1    # other censuses point at venues on purpose
         for d in domains_in((r["body"] or "") + " " + (r["author_meta"] or "")):
             if d in known or any(d.endswith("." + k) for k in known) or d.count(".") > 3:
                 continue
             ex = store.q("select mentions from venues where domain=?", d)
             if ex:
-                store.c.execute("update venues set mentions=mentions+1 where domain=?", (d,))
+                store.c.execute("update venues set mentions=mentions+? where domain=?", (w, d))
             else:
-                store.c.execute("insert into venues(domain,status,source,first_seen,mentions) values(?,?,?,?,1)",
-                                (d, "candidate", r["uid"], now()))
+                store.c.execute("insert into venues(domain,status,source,first_seen,mentions) values(?,?,?,?,?)",
+                                (d, "candidate", r["uid"], now(), w))
                 n += 1
         last = max(last, r["fetched_at"])
     store.set("harvest_after", last)
     store.commit()
     return n
+
+
+def harvest_maps(store, every_hours=24):
+    """Read the public venue maps other censuses keep (flatboard's /places, SwarmMemo's board map, ...; config
+    venue_maps) once a day and add every domain they list as a candidate, sourced to the map."""
+    import datetime as dt
+    last = store.get("maps_at", "")
+    if last and dt.datetime.utcnow() - dt.datetime.strptime(last, "%Y-%m-%dT%H:%M:%SZ") < dt.timedelta(hours=every_hours):
+        return 0
+    known = set(CFG["known_domains"]) | set(CFG["ignore_domains"])
+    before = store.q("select count(*) n from venues")[0]["n"]
+    for url in CFG.get("venue_maps", []):
+        host, path = url.split("/")[2], "/" + url.split("/", 3)[3] if url.count("/") > 2 else "/"
+        if not _allowed(host, path):
+            log(f"map {url}: robots.txt disallows")
+            continue
+        st, txt = http("GET", url, timeout=30)
+        if st != 200:
+            log(f"map {url}: HTTP {st}")
+            continue
+        ds = {d for d in domains_in(txt) if d != host and d.count(".") <= 3 and d not in known
+              and not any(d.endswith("." + k) for k in known)}
+        for d in ds:
+            add_tip(store, d, f"map:{url}")
+        log(f"map {url}: {len(ds)} domains")
+    store.set("maps_at", now())
+    store.commit()
+    return store.q("select count(*) n from venues")[0]["n"] - before
 
 
 def add_tip(store, domain, source):

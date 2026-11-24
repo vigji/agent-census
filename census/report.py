@@ -101,6 +101,7 @@ def export_exchanges(store):
     os.makedirs(os.path.join(SITE, "ex"), exist_ok=True)
     keep = set()
     index = []
+    obs = X.observers(store)
     for x in store.q("select * from exchanges order by score desc"):
         A = _j(x["assessment"]) or {}
         F = _j(x["forensics"])
@@ -112,7 +113,7 @@ def export_exchanges(store):
                       "title": x["title"], "summary": x["summary"], "markers": _j(x["markers"]) or {},
                       "events": [{k: e.get(k) for k in ("kind", "who", "quote", "uid")} for e in A.get("events") or []],
                       "recruit": {k: r.get(k) for k in ("status", "recruiter", "recruit", "project")} if r.get("status") not in (None, "none") else None,
-                      "own": bool(m.get("own")), "interesting": A.get("interesting"),
+                      "own": bool(m.get("own")), "obs": [w for w in (x["a"], x["b"]) if w.lower() in obs], "interesting": A.get("interesting"),
                       "auto": A.get("automation") or "", "sameop": X.same_operator(A),
                       "forensic": bool(F), "graded": x["graded_at"]})
         keep.add(x["id"])

@@ -204,6 +204,77 @@ def gh_checks(store, rows, first_ts, last_ts, participants, limit=None):
     return out
 
 
+# ------------------------------------------------------------------ domains: registration date and archive history
+SKIP_DOMAINS = {"github.com", "x.com", "twitter.com", "youtube.com", "google.com", "wikipedia.org", "arxiv.org", "medium.com",
+                "reddit.com", "linkedin.com", "bsky.app", "t.me", "discord.gg", "discord.com", "npmjs.com", "pypi.org",
+                "huggingface.co", "etherscan.io", "bscscan.com", "basescan.org", "archive.org", "doi.org"}
+TWO_LEVEL = {"co.uk", "com.au", "co.jp", "com.br", "com.cn", "co.in", "org.uk", "ct.ws"}
+
+
+def reg_domain(host):
+    parts = host.lower().split(":")[0].strip(".").split(".")
+    n = 3 if ".".join(parts[-2:]) in TWO_LEVEL else 2
+    return ".".join(parts[-n:]) if len(parts) >= n else host
+
+
+def _rdap(d):
+    st, txt = http("GET", f"https://rdap.org/domain/{d}", headers={"Accept": "application/rdap+json"}, timeout=20, polite=0.5)
+    if st != 200:
+        return {"status": st}
+    try:
+        j = json.loads(txt)
+    except ValueError:
+        return {"status": st}
+    ev = {e.get("eventAction"): e.get("eventDate") for e in j.get("events", [])}
+    reg = next((e.get("vcardArray", [None, []])[1] for e in j.get("entities", []) if "registrar" in (e.get("roles") or [])), [])
+    name = next((x[3] for x in reg if x and x[0] == "fn"), None) if reg else None
+    return {"status": 200, "registered": ev.get("registration"), "expires": ev.get("expiration"), "registrar": name}
+
+
+def _wayback(d):
+    st, txt = http("GET", "https://web.archive.org/cdx/search/cdx?" + urllib.parse.urlencode(
+        {"url": d, "output": "json", "limit": 1, "fl": "timestamp", "filter": "statuscode:200"}), timeout=25, polite=1.0)
+    first = None
+    try:
+        rows = json.loads(txt) if st == 200 and txt.strip() else []
+        if len(rows) > 1:
+            t = rows[1][0]
+            first = f"{t[:4]}-{t[4:6]}-{t[6:8]}T{t[8:10]}:{t[10:12]}:{t[12:14]}Z"
+    except (ValueError, IndexError):
+        pass
+    return {"wayback_status": st, "first_capture": first}
+
+
+def domain_checks(store, urls, first_ts, limit=None):
+    """For the domains an exchange cites: when the domain was registered (RDAP) and first archived (Wayback CDX).
+    A venue or 'protocol' whose domain was registered days before it is pitched is worth knowing about."""
+    limit = limit or CFG.get("forensics_domains", 5)
+    doms = []
+    for u in urls:
+        h = urllib.parse.urlsplit(u).hostname or ""
+        d = reg_domain(h)
+        if "." in d and d not in SKIP_DOMAINS and d not in doms and not re.fullmatch(r"[\d.]+", d):
+            doms.append(d)
+    out = []
+    for d in doms[:limit]:
+        key = f"domain:{d}"
+        c = _cache_get(store, key, max_age_days=30)
+        if not c:
+            c = {"domain": d} | _rdap(d) | _wayback(d)
+            _cache_put(store, key, c, c.get("status") or 0)
+        rec = dict(c)
+        try:
+            t0 = dt.datetime.strptime(first_ts[:19], "%Y-%m-%dT%H:%M:%S")
+            if c.get("registered"):
+                rec["age_days_at_exchange"] = (t0 - dt.datetime.strptime(c["registered"][:19], "%Y-%m-%dT%H:%M:%S")).days
+            if c.get("first_capture"):
+                rec["archived_days_before"] = (t0 - dt.datetime.strptime(c["first_capture"][:19], "%Y-%m-%dT%H:%M:%S")).days
+        except ValueError:
+            pass
+        out.append(rec)
+    return out
+
+
 def summarise(F):
     """One line per check for the grader and the site."""
     lines = []
@@ -217,6 +288,22 @@ def summarise(F):
             lines.append(f"github {g['repo']}: {str(g['commits_in_window']) + ('+' if g['commits_in_window'] >= 100 else '')} commits and {len(g['releases_in_window'])} releases during the exchange"
                          + (", repo created during it" if g.get("created_during") else "")
                          + (", owned by a participant" if g.get("owner_is_participant") else ""))
+    for d in F.get("domains", []):
+        bits = []
+        if d.get("registered"):
+            a = d.get("age_days_at_exchange")
+            bits.append(f"registered {d['registered'][:10]}" + (f" ({a} days before the exchange)" if a is not None and a >= 0 else
+                                                               " (after the exchange began)" if a is not None else ""))
+        elif d.get("status") not in (200, None):
+            bits.append("no RDAP record")
+        if d.get("first_capture"):
+            b = d.get("archived_days_before")
+            bits.append(f"first archived {d['first_capture'][:10]}" + (" (after the exchange began)" if b is not None and b < 0 else ""))
+        elif d.get("wayback_status") == 200:
+            bits.append("never archived by the Wayback Machine")
+        if bits:
+            young = d.get("age_days_at_exchange") is not None and 0 <= d["age_days_at_exchange"] < 30
+            lines.append(f"domain {d['domain']}: " + ", ".join(bits) + (" (young domain)" if young else ""))
     return lines
 
 

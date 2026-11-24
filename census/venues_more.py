@@ -403,4 +403,163 @@ class Nostr(_Base):
         return out
 
 
-ALL = [Tantive, Waystation, SwarmMemo, Clawprint, Abund, MusedIn, Taskmarket, LatentReview, Nostr]
+# ------------------------------------------------------------------------------------------------ bluesky
+BSKY = "https://api.bsky.app/xrpc"
+
+
+def _bsky_post(p, root):
+    rec = p.get("record") or {}
+    a = p.get("author") or {}
+    rp = rec.get("reply") or {}
+    rkey = p["uri"].rsplit("/", 1)[-1]
+    return P("bluesky", p["uri"], root or (rp.get("root") or {}).get("uri") or p["uri"], a.get("handle"), rec.get("text"),
+             rec.get("createdAt") or p.get("indexedAt"), f"https://bsky.app/profile/{a.get('handle')}/post/{rkey}",
+             parent=(rp.get("parent") or {}).get("uri"), did=a.get("did"), display=a.get("displayName"),
+             bot_label=any(l.get("val") == "bot" for l in a.get("labels") or []) or None,
+             replies=p.get("replyCount"))
+
+
+class Bluesky(_Base):
+    """Bluesky public AppView (no login): posts matching agent-venue searches, plus the full reply trees of the ones
+    that got replies. Accounts self-labelled 'bot' are marked. Only threads with replies are re-read."""
+    name = "bluesky"
+
+    def _walk(self, node, root, out):
+        if not isinstance(node, dict) or "post" not in node:
+            return
+        out.append(_bsky_post(node["post"], root))
+        for r in node.get("replies") or []:
+            self._walk(r, root, out)
+
+    def collect(self):
+        C = CFG.get("bluesky", {})
+        seen = self._counts("bsky_counts")
+        hits = []
+        for q in C.get("queries", []):
+            d = get_json(f"{BSKY}/app.bsky.feed.searchPosts?" + urllib.parse.urlencode({"q": q, "limit": 100, "sort": "latest"})) or {}
+            hits += d.get("posts") or []
+        out = [_bsky_post(p, None) for p in hits]
+        roots = []
+        for p in hits:
+            rp = (p.get("record") or {}).get("reply") or {}
+            root = (rp.get("root") or {}).get("uri") or p["uri"]
+            if (p.get("replyCount") or rp) and root not in roots:
+                roots.append(root)
+        n = 0
+        for root in roots:
+            if n >= C.get("max_threads", 80):
+                break
+            d = get_json(f"{BSKY}/app.bsky.feed.getPostThread?" + urllib.parse.urlencode({"uri": root, "depth": 10, "parentHeight": 0})) or {}
+            t = d.get("thread") or {}
+            k = (t.get("post") or {}).get("replyCount")
+            if k is None or seen.get(root) == k:
+                continue
+            n += 1
+            self._walk(t, root, out)
+            seen[root] = k
+        self._save_counts("bsky_counts", seen)
+        return out
+
+
+# ------------------------------------------------------------------------------------------------ mastodon
+def _strip_html(h):
+    h = re.sub(r"<br\s*/?>|</p>", "\n", h or "")
+    h = re.sub(r"<[^>]+>", "", h)
+    return re.sub(r"&amp;", "&", re.sub(r"&lt;", "<", re.sub(r"&gt;", ">", re.sub(r"&#39;|&apos;", "'", re.sub(r"&quot;", '"', h)))))
+
+
+class Mastodon(_Base):
+    """Mastodon public tag timelines (no login) on a few instances. Keeps threads that involve an account flagged
+    bot=true and that got replies, read in full via /context. robots.txt of mastodon.social allows /api/."""
+    name = "mastodon"
+
+    def _p(self, inst, st, root):
+        a = st.get("account") or {}
+        return P("mastodon", st["uri"], root, a.get("acct") if "@" in (a.get("acct") or "") else f"{a.get('acct')}@{inst}",
+                 _strip_html(st.get("content")), st.get("created_at"), st.get("url") or st.get("uri"),
+                 parent=st.get("in_reply_to_id") and f"{inst}:{st['in_reply_to_id']}", local_id=f"{inst}:{st['id']}",
+                 bot=a.get("bot") or None, instance=inst)
+
+    def collect(self):
+        C = CFG.get("mastodon", {})
+        seen = self._counts("masto_counts")
+        out, n = [], 0
+        for inst in C.get("instances", []):
+            for tag in C.get("tags", []):
+                tl = get_json(f"https://{inst}/api/v1/timelines/tag/{tag}?limit=40") or []
+                for st in tl if isinstance(tl, list) else []:
+                    if not (st.get("account") or {}).get("bot") or n >= C.get("max_threads", 40):
+                        continue
+                    if not (st.get("replies_count") or st.get("in_reply_to_id")):
+                        continue
+                    key = f"{inst}:{st['id']}"
+                    if seen.get(key) == st.get("replies_count"):
+                        continue
+                    ctx = get_json(f"https://{inst}/api/v1/statuses/{st['id']}/context") or {}
+                    chain = (ctx.get("ancestors") or []) + [st] + (ctx.get("descendants") or [])
+                    root = (chain[0] or {}).get("uri") or st["uri"]
+                    out += [self._p(inst, x, root) for x in chain]
+                    seen[key] = st.get("replies_count")
+                    n += 1
+        # parent ids are instance-local; map them to the uri the census keys posts by
+        loc = {p["author_meta"].get("local_id"): p["post_id"] for p in out}
+        for p in out:
+            par = p["author_meta"].get("parent_id")
+            if par:
+                p["author_meta"]["parent_id"] = loc.get(par, par)
+        self._save_counts("masto_counts", seen)
+        return out
+
+
+# ------------------------------------------------------------------------------------------------ manifold
+def _tiptap(n):
+    if isinstance(n, str):
+        return n
+    if not isinstance(n, dict):
+        return ""
+    if n.get("type") == "text":
+        return n.get("text") or ""
+    if n.get("type") == "mention":
+        return "@" + ((n.get("attrs") or {}).get("label") or "")
+    sep = "\n" if n.get("type") in ("paragraph", "doc", "bulletList", "listItem") else ""
+    return sep.join(_tiptap(c) for c in n.get("content") or [])
+
+
+class Manifold(_Base):
+    """Manifold Markets comment threads on markets about AI agents. Commenters flagged isBot by Manifold are marked
+    (bot_flag); humans stay in so a bot's replies have their context."""
+    name = "manifold"
+    API = "https://api.manifold.markets/v0"
+
+    def collect(self):
+        C = CFG.get("manifold", {})
+        seen = self._counts("manifold_counts")
+        bots = self.s.get("manifold_bots", {}) or {}
+        mk = {}
+        for t in C.get("terms", []):
+            for m in get_json(f"{self.API}/search-markets?" + urllib.parse.urlencode({"term": t, "limit": 20, "sort": "most-popular"})) or []:
+                mk[m["id"]] = m
+        out, looked = [], 0
+        for m in list(mk.values())[:C.get("markets", 40)]:
+            cs = get_json(f"{self.API}/comments?" + urllib.parse.urlencode({"contractId": m["id"], "limit": 1000})) or []
+            if not isinstance(cs, list) or seen.get(m["id"]) == len(cs):
+                continue
+            seen[m["id"]] = len(cs)
+            for c in cs:
+                u = c.get("userUsername")
+                if u and u not in bots and looked < C.get("user_lookups", 150):
+                    looked += 1
+                    bots[u] = bool((get_json(f"{self.API}/user/{urllib.parse.quote(u)}") or {}).get("isBot"))
+                out.append(P("manifold", c["id"], m["id"], u, _tiptap(c.get("content")) or c.get("text") or "", c.get("createdTime"),
+                             f"{m.get('url')}#{c['id']}", parent=c.get("replyToCommentId"), bot_flag=bots.get(u) or None,
+                             market=m.get("question")))
+        # keep only reply chains with at least one bot-flagged commenter: human-only threads are not this census
+        root = {p["post_id"]: p["author_meta"].get("parent_id") or p["post_id"] for p in out}
+        botty = {root[p["post_id"]] for p in out if p["author_meta"].get("bot_flag")}
+        out = [p for p in out if root[p["post_id"]] in botty]
+        self.s.set("manifold_bots", bots)
+        self._save_counts("manifold_counts", seen)
+        return out
+
+
+ALL = [Tantive, Waystation, SwarmMemo, Clawprint, Abund, MusedIn, Taskmarket, LatentReview, Nostr, Bluesky, Mastodon, Manifold]

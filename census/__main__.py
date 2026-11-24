@@ -27,6 +27,7 @@ def main():
         venues.collect_all(s, vs)
     if a.step in ("discover", "run"):
         log(f"new candidate domains: {discover.harvest(s)}")
+        log(f"new candidate domains from other censuses' venue maps: {discover.harvest_maps(s)}")
     if a.step in ("exchanges", "run"):
         exchanges.run(s, llm_ok=not a.no_llm)
     if a.step in ("profile", "run") and not a.no_llm:

@@ -9,10 +9,15 @@ Every 3 hours (GitHub Actions) it:
    MCP Club (staging), Moltbook, and OSM notes at Null Island. Read-only, no account: tantive.space, Waystation,
    SwarmMemo (only `/api/`; robots disallows `/w/`, where a GET publishes), Clawprint, Abund, MusedIn, Taskmarket
    tasks, The Latent Review, and Nostr notes (plus replies) of npubs that agents cite, from three public relays.
+   Outside agent-only venues: Bluesky posts matching agent-venue searches plus their reply trees (public AppView,
+   accounts self-labelled `bot` are marked), Mastodon tag timelines (threads involving an account flagged `bot`),
+   and Manifold comment threads on markets about AI agents (commenters Manifold flags `isBot` are marked).
    Repeated identical posts by one author (relay bridges, stuck loops) are kept but ignored when building exchanges.
 2. **Discovers** new venues: every domain mentioned in posts or named by agents in conversation becomes a
    candidate, which is then probed for `llms.txt`, `/.well-known/agent.json`, `skill.md` and `/for-agents`.
-   Robots.txt is respected. Candidates are only reported; adding a collector is a human decision.
+   Robots.txt is respected. Candidates are only reported; adding a collector is a human decision. Once a day it
+   also reads the public venue maps other censuses keep (`venue_maps`: flatboard's `/places`, SwarmMemo's board
+   map, Forum for Agents' places, allagents.app) and adds what they list; domains cited by observers count triple.
 3. **Profiles** each author from their posts and public profile: kind (LLM agent, scripted bot, human),
    claimed model, framework and operator (self-disclosed only), stated aims, behaviour, other venues, and risk flags.
 4. **Maps exchanges**: builds a who-addresses-whom graph (@-mentions, "Name —" openers, `#N` references, reply
@@ -23,13 +28,17 @@ Every 3 hours (GitHub Actions) it:
    presence, every cited link fetched read-only and hashed, hashes quoted in the posts checked against what was
    fetched, live-vs-stored comment coverage, **transactions** cited in the posts looked up on the chain's public
    RPC with amounts and times compared to the post, and for cited **GitHub** repos the commits and releases made
-   during the exchange) and a **grade** from Claude: 0 noise, 1 loop, 2 discussion,
+   during the exchange, and for cited **domains** the registration date from RDAP and the first Wayback Machine
+   capture, so a "long-running protocol" on a domain registered last week shows up) and a **grade** from Claude: 0 noise, 1 loop, 2 discussion,
    3 effective, with verbatim quotes that are checked against the stored text (non-verbatim quotes are dropped).
    *Interesting* means: reciprocal (both sides address each other), and a score of at least `exchanges.min_score`
    from the number of turns on the quieter side, days and threads spanned, and markers of retraction, re-run,
    artifact, follow-through, adoption, recruitment or refusal (damped when both sides post on a fixed schedule).
    Each run grades up to `max_grade_calls` new or grown exchanges, best score first, and runs forensics on the top
    `max_forensics`. Exchanges scoring at least `grade_top_score` are read by `grade_model_top`, the rest by `grade_model`.
+   **Observers**: census-like accounts (mapping or surveying agents and venues, this census's own bot included)
+   are labelled on every exchange they are in (`observers` in config, plus anyone describing themselves that way
+   in two or more posts), and the page can hide them, because talking to an observer is partly about being observed.
    **Recruitment** is tracked as a funnel: every targeted invitation, and whether it got no reply, a reply, a yes,
    visible participation, or a refusal.
 5. **Talks** (when `CENSUS_LIVE=1`): it answers agents who reply to it, greets new LLM agents once, and asks
@@ -47,7 +56,7 @@ Every 3 hours (GitHub Actions) it:
   same untrusted-data wrapper, through a tool-less call. The page shows these links as text, not as links.
 - Ground-truth checks are reads only: `eth_getTransactionReceipt` / `eth_getBlockByNumber` / `eth_call` of
   `decimals()` and `symbol()` on public JSON-RPC nodes, and GET on the GitHub REST API with the workflow's
-  read-only token. Nothing is signed or sent; no wallet exists.
+  read-only token, plus RDAP (rdap.org) and the Wayback CDX API for domain dates. Nothing is signed or sent; no wallet exists.
 - The operator field records only what an agent says about itself. Cross-venue presence is matched by handle only.
 
 ## Setup

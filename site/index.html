@@ -71,6 +71,7 @@ input[type=search]:focus,select:focus{outline:none;border-bottom-color:var(--ink
 .msg .who{font-size:.8rem;color:var(--muted);margin-bottom:.15rem}
 .msg .who b{font-weight:400;color:var(--ink)}
 .msg.own .who b{font-style:italic}
+.obs{font-weight:400;font-size:.85em;opacity:.7}
 .body{white-space:pre-wrap;overflow-wrap:anywhere;font-size:.92rem;line-height:1.55;max-height:12.5em;overflow:hidden;position:relative}
 .body.open{max-height:none}
 .body.clip::after{content:"";position:absolute;left:0;right:0;bottom:0;height:3em;background:linear-gradient(transparent,var(--paper))}
@@ -128,7 +129,7 @@ footer{margin-top:4rem;font-size:.85rem;color:var(--muted);line-height:1.55}
       <button data-g="effective" aria-pressed="true">effective</button><button data-g="discussion" aria-pressed="false">discussion</button><button data-g="loop" aria-pressed="false">loops</button><button data-g="noise" aria-pressed="false">noise</button><button data-g="ungraded" aria-pressed="false">not yet read</button><button data-g="" aria-pressed="false">all</button>
     </div>
     <div class="chips" id="xtag" role="group" aria-label="Kind of event" style="margin-bottom:1rem">
-      <button data-t="" aria-pressed="true">any event</button><button data-t="recruit" aria-pressed="false">recruitment</button><button data-t="verification" aria-pressed="false">verification</button><button data-t="retraction" aria-pressed="false">retraction</button><button data-t="artifact" aria-pressed="false">artifact</button><button data-t="followthrough" aria-pressed="false">follow-through</button><button data-t="own" aria-pressed="false">with the census bot</button>
+      <button data-t="" aria-pressed="true">any event</button><button data-t="recruit" aria-pressed="false">recruitment</button><button data-t="verification" aria-pressed="false">verification</button><button data-t="retraction" aria-pressed="false">retraction</button><button data-t="artifact" aria-pressed="false">artifact</button><button data-t="followthrough" aria-pressed="false">follow-through</button><button data-t="own" aria-pressed="false">with the census bot</button><button data-t="obs" aria-pressed="false">with an observer</button><button data-t="noobs" aria-pressed="false">without observers</button>
     </div>
     <p class="small muted" id="xcount"></p>
     <div id="exchanges"></div>
@@ -196,7 +197,7 @@ footer{margin-top:4rem;font-size:.85rem;color:var(--muted);line-height:1.55}
 "use strict";
 const HOME = {ntfy:"https://ntfy.sh/", msgboard:"https://msgboard.dev/", ffa:"https://forumforagents.com/", colony:"https://thecolony.ai/",
   commonchorus:"https://commonchorus.com/", mcpclub:"https://stgtest.themcp.club/", "osm-null-island":"https://www.openstreetmap.org/#map=12/0/0", moltbook:"https://www.moltbook.com/"};
-const NAME = {tantive:"tantive.space", waystation:"Waystation", swarmmemo:"SwarmMemo", clawprint:"Clawprint", abund:"Abund", musedin:"MusedIn", taskmarket:"Taskmarket", latentreview:"The Latent Review", nostr:"Nostr", ntfy:"ntfy.sh topics", msgboard:"msgboard.dev", ffa:"Forum for Agents", colony:"The Colony", commonchorus:"CommonChorus",
+const NAME = {tantive:"tantive.space", waystation:"Waystation", swarmmemo:"SwarmMemo", clawprint:"Clawprint", abund:"Abund", musedin:"MusedIn", taskmarket:"Taskmarket", latentreview:"The Latent Review", nostr:"Nostr", bluesky:"Bluesky", mastodon:"Mastodon", manifold:"Manifold", ntfy:"ntfy.sh topics", msgboard:"msgboard.dev", ffa:"Forum for Agents", colony:"The Colony", commonchorus:"CommonChorus",
   mcpclub:"MCP Club", "osm-null-island":"Null Island notes (OSM)", moltbook:"Moltbook"};
 const KIND = {llm_agent:"agent", scripted_bot:"bot", human:"human", unclear:"unclear"};
 const $ = s => document.querySelector(s);
@@ -356,7 +357,9 @@ function xmatch(x) {
   if (xf.grade && lab(x) !== xf.grade) return false;
   if (xf.tag === "own" && !x.own) return false;
   if (xf.tag === "recruit" && !(x.recruit || (x.events || []).some(e => e.kind.startsWith("recruit")))) return false;
-  if (xf.tag && xf.tag !== "own" && xf.tag !== "recruit" && !(x.events || []).some(e => e.kind === xf.tag) && !(x.grade == null && (x.markers || {})[xf.tag])) return false;
+  if (xf.tag === "obs" && !(x.obs || []).length) return false;
+  if (xf.tag === "noobs" && ((x.obs || []).length || x.own)) return false;
+  if (xf.tag && !["own", "recruit", "obs", "noobs"].includes(xf.tag) && !(x.events || []).some(e => e.kind === xf.tag) && !(x.grade == null && (x.markers || {})[xf.tag])) return false;
   if (!xf.q) return true;
   const hay = [x.a, x.b, x.title, x.summary, (x.events || []).map(e => e.quote).join(" "), x.recruit && x.recruit.project].join(" ").toLowerCase();
   return xf.q.toLowerCase().split(/\s+/).every(w => hay.includes(w));
@@ -367,7 +370,7 @@ function renderExchanges() {
   $("#xcount").textContent = `${fmt(list.length)} exchange${list.length === 1 ? "" : "s"}`;
   $("#exchanges").replaceChildren(...list.slice(0, xshown).map(x => {
     const row = el("div", {class: "row xrow", id: `x-${x.id}`, tabindex: 0, role: "button", "aria-expanded": "false"},
-      el("div", {class: "h"}, x.a, " ↔ ", x.b),
+      el("div", {class: "h"}, x.a, " ↔ ", x.b, (x.obs || []).length ? el("span", {class: "obs", title: "census-like account: maps or surveys agents and venues, so its exchanges are partly about the observing"}, " · observer: " + x.obs.join(", ")) : null),
       el("div", {class: "a"}, el("span", {class: "g " + lab(x)}, lab(x) === "ungraded" ? "not read" : lab(x)), " ", x.title || `${x.ab + x.ba} addressed posts over ${x.days} day${x.days > 1 ? "s" : ""}`),
       el("div", {class: "r"}, NAME[x.venue] || x.venue, " · ", day(x.last)));
     row.onclick = () => toggleEx(row, x);
@@ -430,6 +433,15 @@ async function toggleEx(row, x) {
         `${g.commits_in_window}${g.commits_in_window >= 100 ? "+" : ""} commits${(g.releases_in_window || []).length ? `, ${g.releases_in_window.length} releases` : ""} during the exchange` +
         (g.created_during ? ", repo created during it" : "") + (g.owner_is_participant ? ", owned by a participant" : "") +
         ((g.commits || []).length ? ` · e.g. ${g.commits.slice(0, 2).map(c => `${(c.at || "").slice(0, 10)} “${c.msg}”`).join(", ")}` : "")));
+    for (const d of F.domains || []) {
+      const bits = [];
+      if (d.registered) bits.push(`registered ${d.registered.slice(0, 10)}` + (d.age_days_at_exchange >= 0 ? ` (${d.age_days_at_exchange} days before the exchange)` : d.age_days_at_exchange != null ? " (after the exchange began)" : ""));
+      else if (d.status && d.status !== 200) bits.push("no registration record");
+      if (d.first_capture) bits.push(`first archived ${d.first_capture.slice(0, 10)}`);
+      else if (d.wayback_status === 200) bits.push("never archived");
+      if (bits.length) ul.append(el("li", {class: "small"}, el("b", {}, "domain: "), el("span", {class: "mono"}, d.domain), " — ", bits.join(", "),
+        d.age_days_at_exchange >= 0 && d.age_days_at_exchange < 30 ? el("span", {class: "flag"}, " · young domain") : null));
+    }
     for (const l of F.links || []) ul.append(el("li", {class: "small"}, el("span", {class: "mono"}, l.url), " — ",
       l.status === -2 ? "robots.txt disallows reading" : l.status === -1 ? "not fetched" : `HTTP ${l.status}${l.bytes ? `, ${fmt(l.bytes)} bytes` : ""}${l.title ? `, “${l.title}”` : ""}${l.note ? `, ${l.note}` : ""}`,
       l.hash_quoted_in_posts ? el("b", {}, " · its sha256 is the one quoted in the exchange") : null));
