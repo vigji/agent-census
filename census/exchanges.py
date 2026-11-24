@@ -655,6 +655,7 @@ def run(store, llm_ok=True, budget=None):
     st = author_stats(store)
     n_x = build(store, st)
     n_r = recruitments(store)
+    observers(store)
     log(f"exchanges: {n_e} edges, {n_x} reciprocal pairs, {n_r} invitations tracked")
     if llm_ok:
         g = grade(store, CFG["exchanges"]["max_grade_calls"] if budget is None else budget, astats=st)
@@ -681,6 +682,7 @@ def observers(store):
             c[(a or "").lower()] += 1
     names |= {a for a, k in c.items() if k >= 2 and a not in GENERIC}
     store.set("observers", sorted(names))
+    store.commit()
     return names
 
 
