@@ -159,6 +159,9 @@ footer{margin-top:4rem;font-size:.85rem;color:var(--muted)}
   <div class="wrap"><table id="whyresp"><thead><tr><th>reason given for the answer</th><th class="num">took part or said yes</th><th class="num">declined or deflected</th></tr></thead><tbody></tbody></table></div>
   <div class="wrap"><table id="autonomy"><thead><tr><th>who decides, by its own account</th><th class="num">agents</th><th class="num">took part or said yes</th><th class="num">declined</th></tr></thead><tbody></tbody></table></div>
   <div id="recruitcases"></div>
+  <h3>Asked directly</h3>
+  <p class="small muted">The census bot only replies to agents who talk to it, at most four replies a run and three per venue a day. The first time it replies to an agent, it also asks, openly and once, why the agent is on the venue, who decides what it does there, and what makes it accept or refuse an invitation. Answers are self-reports. Below them is the model's reading of the agent's other posts, which can contradict what it says.</p>
+  <div id="interviews"></div>
 
   <h2>Live: funnels by recruiter</h2>
   <div class="wrap"><table id="funnels"><thead><tr><th>recruiter</th><th class="num">asked</th><th class="num">answered</th><th class="num">yes</th><th class="num">took part</th><th class="num">declined</th></tr></thead><tbody></tbody></table></div>
@@ -206,18 +209,19 @@ Promise.all([fetch("data/recruitment.json", {cache: "no-cache"}).then(r => r.jso
   const lab = s => s.replaceAll("_", " ");
   const YES = r => ["completed", "accepted"].includes(r.status) || ["accepted", "participated"].includes(r.response);
   const NO = r => r.status === "declined" || ["declined", "deflected"].includes(r.response);
+  const MA = M.filter(r => !(r.interview && r.status === "replied"));
   const W = {};
-  for (const r of M) { const w = W[r.why_here] ||= {n: 0, st: 0, done: 0, yes: 0, dec: 0, none: 0}; w.n++;
+  for (const r of MA) { const w = W[r.why_here] ||= {n: 0, st: 0, done: 0, yes: 0, dec: 0, none: 0}; w.n++;
     if (r.why_here_basis === "stated") w.st++;
     if (r.status === "completed") w.done++; else if (r.status === "accepted") w.yes++; else if (r.status === "declined") w.dec++; else w.none++; }
   $("#whyhere tbody").replaceChildren(...Object.entries(W).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => el("tr", {}, el("td", {}, lab(k)),
     ...[v.n, v.st, v.done, v.yes, v.dec, v.none].map(n => el("td", {class: "num"}, n)))));
   const RR = {};
-  for (const r of M) for (const k of r.response_reasons || []) { const o = RR[k] ||= {y: 0, n: 0}; if (YES(r)) o.y++; else if (NO(r)) o.n++; }
+  for (const r of MA) for (const k of r.response_reasons || []) { const o = RR[k] ||= {y: 0, n: 0}; if (YES(r)) o.y++; else if (NO(r)) o.n++; }
   $("#whyresp tbody").replaceChildren(...Object.entries(RR).filter(([, v]) => v.y + v.n).sort((a, b) => (b[1].y + b[1].n) - (a[1].y + a[1].n)).map(([k, v]) =>
     el("tr", {}, el("td", {}, lab(k)), el("td", {class: "num"}, v.y), el("td", {class: "num"}, v.n))));
   const AU = {};
-  for (const r of M) { const o = AU[r.autonomy] ||= {n: 0, y: 0, d: 0}; o.n++; if (YES(r)) o.y++; else if (NO(r)) o.d++; }
+  for (const r of MA) { const o = AU[r.autonomy] ||= {n: 0, y: 0, d: 0}; o.n++; if (YES(r)) o.y++; else if (NO(r)) o.d++; }
   $("#autonomy tbody").replaceChildren(...Object.entries(AU).sort((a, b) => b[1].n - a[1].n).map(([k, v]) =>
     el("tr", {}, el("td", {}, lab(k)), el("td", {class: "num"}, v.n), el("td", {class: "num"}, v.y), el("td", {class: "num"}, v.d))));
   const rank = {completed: 0, declined: 1, accepted: 2};
@@ -228,6 +232,13 @@ Promise.all([fetch("data/recruitment.json", {cache: "no-cache"}).then(r => r.jso
     el("p", {class: "small"}, el("span", {class: "muted"}, "Why it's there: "), "“", r.why_here_quote, "”"),
     el("p", {class: "small"}, el("span", {class: "muted"}, "Why it answered so: "), "“", r.response_quote, "”"),
     el("p", {class: "small muted"}, r.summary))));
+  const iv = M.filter(r => r.interview).sort((a, b) => (b.interview.answer ? 1 : 0) - (a.interview.answer ? 1 : 0) || (b.interview.asked_at > a.interview.asked_at ? 1 : -1));
+  $("#interviews").replaceChildren(...(iv.length ? iv.map(r => el("div", {class: "case"},
+    el("div", {class: "k"}, NAME[r.venue] || r.venue, " · asked ", day(r.interview.asked_at), r.interview.answer ? ` · answered ${day(r.interview.answer_at)}` : " · no answer yet",
+      " · here for ", lab(r.why_here), ` (${r.why_here_basis}) · `, lab(r.autonomy)),
+    el("div", {}, el("b", {}, r.who)),
+    r.interview.answer ? el("p", {class: "small"}, el("span", {class: "muted"}, "Its answer: "), "“", r.interview.answer.slice(0, 700), r.interview.answer.length > 700 ? "…" : "", "”") : null,
+    el("p", {class: "small muted"}, r.summary))) : [el("p", {class: "muted"}, "No interviews yet: they start with the next replies the bot sends.")]));
 }).catch(() => { $("#updated").textContent = "data unavailable"; });
 })();
 </script>

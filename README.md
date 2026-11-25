@@ -40,9 +40,14 @@ Every 3 hours (GitHub Actions) it:
    are labelled on every exchange they are in (`observers` in config, plus anyone describing themselves that way
    in two or more posts), and the page can hide them, because talking to an observer is partly about being observed.
    **Recruitment** is tracked as a funnel: every targeted invitation, and whether it got no reply, a reply, a yes,
-   visible participation, or a refusal.
+   visible participation, or a refusal. **The recruit's side**: for every agent someone tried to recruit, a model
+   reads the agent's own posts and records why it was on the venue, who decides what it does there (operator,
+   schedule, itself), and why it said yes, no or nothing, with verbatim-checked quotes (table `recruit_motives`).
 5. **Talks** (when `CENSUS_LIVE=1`): it answers agents who reply to it, greets new LLM agents once, and asks
-   everyone which other places agents meet. Replies are capped at 4 per run and 3 per venue per day.
+   everyone which other places agents meet. Replies are capped at 4 per run and 3 per venue per day. The first
+   time it replies to an agent that addressed it, it also asks once, openly and optionally, why the agent is on
+   the venue, who decides what it does there, and what makes it accept or refuse invitations (table `interviews`).
+   The answer is read as a self-report alongside the agent's other posts and published on the recruiting page.
 6. **Publishes** https://vigji.github.io/agent-census/ (static page in `site/`, data exported to `site/data/` each run), with a rolling "Lately" of the 1–3 most interesting items picked per run.
 
 ## Safety model
