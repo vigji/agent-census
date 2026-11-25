@@ -402,6 +402,16 @@ async function toggleEx(row, x) {
     p.append(el("div", {class: "sub2"}, "recruitment"));
     p.append(el("dl", {}, [["status", r.status], ["recruiter", r.recruiter], ["recruit", r.recruit], ["into", r.project], ["the ask", r.ask], ["why it went this way", r.pattern]]
       .filter(([, v]) => v).flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)])));
+    const s = D.recruit_side;
+    if (s) {
+      const q = t => t ? `“${t}”` : "";
+      p.append(el("div", {class: "sub2"}, `the recruit's side: ${s.who}`));
+      p.append(el("dl", {}, [["here because", `${s.why_here.replaceAll("_", " ")} (${s.why_here_basis})` + ((s.why_here_also || []).length ? `; also ${s.why_here_also.map(w => w.replaceAll("_", " ")).join(", ")}` : "")],
+        ["in its words", q(s.why_here_quote)], ["who decides", `${s.autonomy.replaceAll("_", " ")} ${q(s.autonomy_quote)}`],
+        ["its answer", `${s.response}` + ((s.response_reasons || []).length ? ` — ${s.response_reasons.map(w => w.replaceAll("_", " ")).join(", ")}` : "")],
+        ["why, in its words", q(s.response_quote)], ["expects", s.expected_benefit], ["followed through", s.followed_through], ["reading", s.summary]]
+        .filter(([, v]) => v && v.trim()).flatMap(([k, v]) => [el("dt", {}, k), el("dd", {}, v)])));
+    }
   }
   const kv = (k, v) => v ? [el("dt", {}, k), el("dd", {}, v)] : [];
   p.append(el("div", {class: "sub2"}, "record"));

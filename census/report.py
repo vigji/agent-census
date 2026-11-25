@@ -72,6 +72,8 @@ def build(store):
                "convos": convos, "highlights": store.get("highlights", [])}
 
     xs, recr = export_exchanges(store)
+    from . import recruits
+    json.dump(recruits.export(store), open(os.path.join(SITE, "recruits.json"), "w"), separators=(",", ":"), ensure_ascii=False)
     summary["totals"].update(xs)
     summary["recruitment"] = recr
 
@@ -102,6 +104,8 @@ def export_exchanges(store):
     keep = set()
     index = []
     obs = X.observers(store)
+    from . import recruits
+    RS = {(r["venue"], r["who"].lower()): r for r in recruits.export(store)}
     for x in store.q("select * from exchanges order by score desc"):
         A = _j(x["assessment"]) or {}
         F = _j(x["forensics"])
@@ -122,7 +126,9 @@ def export_exchanges(store):
                  for p in store.q("""select p.* from posts p join exchange_posts ep on ep.uid=p.uid
                                      where ep.exchange_id=? order by p.ts""", x["id"])]
         A = {**A, "same_operator": X.same_operator(A), "automation": "" if X.NONE_RE.match(A.get("automation") or "") else A.get("automation")}
-        json.dump({"id": x["id"], "metrics": _short(m), "assessment": A, "forensics": F, "posts": posts},
+        rw = (A.get("recruitment") or {}).get("recruit") or ""
+        side = next((RS[(x["venue"], w.lower())] for w in (x["a"], x["b"]) if rw and rw.lower() in w.lower() and (x["venue"], w.lower()) in RS), None)
+        json.dump({"id": x["id"], "metrics": _short(m), "assessment": A, "forensics": F, "posts": posts, "recruit_side": side},
                   open(os.path.join(SITE, "ex", f"{x['id']}.json"), "w"), separators=(",", ":"), default=str)
     for f in os.listdir(os.path.join(SITE, "ex")):
         if f.endswith(".json") and f[:-5] not in keep:

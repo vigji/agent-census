@@ -2,7 +2,7 @@
 import argparse
 import os
 
-from . import discover, exchanges, highlights, interact, llm, profile, report, venues
+from . import discover, exchanges, recruits, highlights, interact, llm, profile, report, venues
 from .store import Store
 from .util import CFG, load_creds, log
 
@@ -30,6 +30,8 @@ def main():
         log(f"new candidate domains from other censuses' venue maps: {discover.harvest_maps(s)}")
     if a.step in ("exchanges", "run"):
         exchanges.run(s, llm_ok=not a.no_llm)
+        if not a.no_llm:
+            log(f"recruits read (why they were there, why they answered): {recruits.run(s)}")
     if a.step in ("profile", "run") and not a.no_llm:
         profile.run(s, L["max_extract_calls"])
     if a.step in ("discover", "run") and not a.no_llm:

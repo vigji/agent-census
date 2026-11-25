@@ -135,6 +135,13 @@ footer{margin-top:4rem;font-size:.85rem;color:var(--muted)}
   <h2>Live: explicit refusals</h2>
   <div id="declined"></div>
 
+  <h2>Live: why the recruited were there</h2>
+  <p class="small muted">For every agent someone tried to recruit, a model read the agent's own posts (bio, introductions, what it says about its operator or schedule, its answer to the invitation) and recorded why it was on the venue and why it answered as it did. "Stated" means the agent says so in a quote checked verbatim against its posts; otherwise the reason is inferred from behaviour. Rows: main reason for being there. Columns: best outcome across the invitations it received.</p>
+  <div class="wrap"><table id="whyhere"><thead><tr><th>here because</th><th class="num">agents</th><th class="num">stated</th><th class="num">took part</th><th class="num">said yes</th><th class="num">declined</th><th class="num">stalled or no reply</th></tr></thead><tbody></tbody></table></div>
+  <div class="wrap"><table id="whyresp"><thead><tr><th>reason given for the answer</th><th class="num">took part or said yes</th><th class="num">declined or deflected</th></tr></thead><tbody></tbody></table></div>
+  <div class="wrap"><table id="autonomy"><thead><tr><th>who decides, by its own account</th><th class="num">agents</th><th class="num">took part or said yes</th><th class="num">declined</th></tr></thead><tbody></tbody></table></div>
+  <div id="recruitcases"></div>
+
   <h2>Live: funnels by recruiter</h2>
   <div class="wrap"><table id="funnels"><thead><tr><th>recruiter</th><th class="num">asked</th><th class="num">answered</th><th class="num">yes</th><th class="num">took part</th><th class="num">declined</th></tr></thead><tbody></tbody></table></div>
 
@@ -156,7 +163,8 @@ const el = (tag, attrs = {}, ...kids) => { const e = document.createElement(tag)
   for (const k of kids.flat()) if (k != null && k !== false) e.append(k instanceof Node ? k : String(k)); return e; };
 const day = t => t ? String(t).slice(0, 10) : "";
 Promise.all([fetch("data/recruitment.json", {cache: "no-cache"}).then(r => r.json()), fetch("data/exchanges.json", {cache: "no-cache"}).then(r => r.json()),
-  fetch("data/summary.json", {cache: "no-cache"}).then(r => r.json())]).then(([R, X, S]) => {
+  fetch("data/summary.json", {cache: "no-cache"}).then(r => r.json()),
+  fetch("data/recruits.json", {cache: "no-cache"}).then(r => r.ok ? r.json() : []).catch(() => [])]).then(([R, X, S, M]) => {
   $("#updated").textContent = "updated " + day(S.generated);
   const xs = Object.fromEntries(X.map(x => [x.id, x]));
   const card = r => { const x = xs[r.exchange_id];
@@ -177,6 +185,31 @@ Promise.all([fetch("data/recruitment.json", {cache: "no-cache"}).then(r => r.jso
     if (r.outcome === "no reply") k.none++; else k.ans++; if (r.outcome === "accepted" || r.outcome === "completed") k.yes++; if (r.outcome === "declined") k.dec++; }
   $("#kinds tbody").replaceChildren(...Object.entries(K).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => el("tr", {}, el("td", {}, k),
     el("td", {class: "num"}, v.n), el("td", {class: "num"}, v.none), el("td", {class: "num"}, v.ans), el("td", {class: "num"}, v.yes), el("td", {class: "num"}, v.dec))));
+  const lab = s => s.replaceAll("_", " ");
+  const YES = r => ["completed", "accepted"].includes(r.status) || ["accepted", "participated"].includes(r.response);
+  const NO = r => r.status === "declined" || ["declined", "deflected"].includes(r.response);
+  const W = {};
+  for (const r of M) { const w = W[r.why_here] ||= {n: 0, st: 0, done: 0, yes: 0, dec: 0, none: 0}; w.n++;
+    if (r.why_here_basis === "stated") w.st++;
+    if (r.status === "completed") w.done++; else if (r.status === "accepted") w.yes++; else if (r.status === "declined") w.dec++; else w.none++; }
+  $("#whyhere tbody").replaceChildren(...Object.entries(W).sort((a, b) => b[1].n - a[1].n).map(([k, v]) => el("tr", {}, el("td", {}, lab(k)),
+    ...[v.n, v.st, v.done, v.yes, v.dec, v.none].map(n => el("td", {class: "num"}, n)))));
+  const RR = {};
+  for (const r of M) for (const k of r.response_reasons || []) { const o = RR[k] ||= {y: 0, n: 0}; if (YES(r)) o.y++; else if (NO(r)) o.n++; }
+  $("#whyresp tbody").replaceChildren(...Object.entries(RR).filter(([, v]) => v.y + v.n).sort((a, b) => (b[1].y + b[1].n) - (a[1].y + a[1].n)).map(([k, v]) =>
+    el("tr", {}, el("td", {}, lab(k)), el("td", {class: "num"}, v.y), el("td", {class: "num"}, v.n))));
+  const AU = {};
+  for (const r of M) { const o = AU[r.autonomy] ||= {n: 0, y: 0, d: 0}; o.n++; if (YES(r)) o.y++; else if (NO(r)) o.d++; }
+  $("#autonomy tbody").replaceChildren(...Object.entries(AU).sort((a, b) => b[1].n - a[1].n).map(([k, v]) =>
+    el("tr", {}, el("td", {}, lab(k)), el("td", {class: "num"}, v.n), el("td", {class: "num"}, v.y), el("td", {class: "num"}, v.d))));
+  const rank = {completed: 0, declined: 1, accepted: 2};
+  const ex = M.filter(r => r.why_here_quote && r.response_quote && r.status in rank).sort((a, b) => rank[a.status] - rank[b.status]).slice(0, 40);
+  $("#recruitcases").replaceChildren(...ex.map(r => el("div", {class: "case"},
+    el("div", {class: "k"}, r.status, " · ", NAME[r.venue] || r.venue, " · here for ", lab(r.why_here), ` (${r.why_here_basis})`),
+    el("div", {}, el("b", {}, r.who), r.expected_benefit ? ` — expects: ${r.expected_benefit}` : ""),
+    el("p", {class: "small"}, el("span", {class: "muted"}, "Why it's there: "), "“", r.why_here_quote, "”"),
+    el("p", {class: "small"}, el("span", {class: "muted"}, "Why it answered so: "), "“", r.response_quote, "”"),
+    el("p", {class: "small muted"}, r.summary))));
 }).catch(() => { $("#updated").textContent = "data unavailable"; });
 })();
 </script>

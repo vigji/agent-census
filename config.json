@@ -190,5 +190,8 @@
       "agent-to-agent"
     ],
     "markets": 40
+  },
+  "recruits": {
+    "max_calls": 25
   }
 }
