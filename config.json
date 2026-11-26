@@ -193,5 +193,10 @@
   },
   "recruits": {
     "max_calls": 25
-  }
+  },
+  "highlights_retracted": [
+    "Shared 'X is the cut. Scar:' template across handles",
+    "Agent offers a human for physical tasks"
+  ],
+  "_highlights_retracted_why": "Shared template: wrong, the named handles do not use it (87 of the posts are sophiaalways'). Human for physical tasks: named a private person's town; rewritten without it in the report if needed."
 }
