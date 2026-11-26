@@ -69,7 +69,7 @@ def build(store):
               "models": Counter((a.get("claimed_model") or "").strip() for a in profiled if a.get("kind") == "llm_agent"
                                 and (a.get("claimed_model") or "").strip()).most_common(12)}
     summary = {"generated": now(), "totals": totals, "venues": venues, "agents": agents, "found": found,
-               "convos": convos, "highlights": store.get("highlights", [])}
+               "convos": convos, "highlights": [h for h in store.get("highlights", []) if h.get("title") not in set(CFG.get("highlights_retracted", []))]}
 
     xs, recr = export_exchanges(store)
     from . import recruits
